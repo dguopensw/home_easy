@@ -35,9 +35,16 @@ main                    # 최종 배포용 브랜치 (직접 push 금지)
 
 GitHub 레포 → **Issues** 탭 → **New issue**
 
-- 제목 예시: `AR 바닥 인식 기능 구현`, `URL 입력 페이지 UI 수정`
+템플릿 두 가지 중 하나를 선택하세요:
+
+| 템플릿 | 언제 쓰나요? |
+|--------|------------|
+| **기능 추가** | 새 기능 구현, UI 작업, 리팩토링 등 |
+| **버그 리포트** | 오류나 예상과 다른 동작 발견 시 |
+
+- 제목은 템플릿 prefix를 유지하면 좋으나 상황에 맞게 유동적으로 하시면 됩니다 (`[FEAT]`, `[BUG]`)
 - 담당자(Assignees)에 본인 지정
-- 적절한 Label 선택 (`feature`, `fix`, `ui` 등)
+- 적절한 Label 선택
 
 #### 2단계: Issue에서 브랜치 생성
 
@@ -66,8 +73,11 @@ git push origin feature/ar-연동
 GitHub 레포 → **Pull requests** → **New pull request**
 
 - **base**: `develop` ← **compare**: `feature/ar-연동`
-- 제목과 설명 작성, 연결된 Issue 번호 언급 (`closes #이슈번호`)
-- 팀원 리뷰 요청 후 Merge
+- PR을 열면 본문에 템플릿이 자동으로 채워져요. 각 항목을 채워주세요:
+  - `closes #이슈번호` — 연결된 Issue 번호 입력
+  - 작업 내용 / 변경 사항 / 스크린샷(UI 변경 시) 작성
+  - Merge 전 체크리스트 확인
+- 팀원을 Reviewers에 추가해서 리뷰 요청
 
 > ⚠️ **PR은 반드시 팀원 승인(Approve)을 받은 후에 Merge하세요. 승인 없이 Merge 금지!**
 
