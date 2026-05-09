@@ -50,7 +50,7 @@ GitHub 레포 → **Issues** 탭 → **New issue**
 
 Issue 페이지 오른쪽 → **Development** → **Create a branch**
 
-- 브랜치 이름 예시: `feature/ar-연동`, `feature/preview-ui`
+- 브랜치 이름 예시: `feat/ar-연동`, `feat/preview-ui` (이제 보통 새로운 기능을 개발할 경우 feat을 앞에 붙입니다)
 - **Change branch source** 클릭 후 `develop`으로 변경 후 생성
 
 생성된 브랜치를 로컬에 받기:
