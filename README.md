@@ -69,6 +69,8 @@ GitHub 레포 → **Pull requests** → **New pull request**
 - 제목과 설명 작성, 연결된 Issue 번호 언급 (`closes #이슈번호`)
 - 팀원 리뷰 요청 후 Merge
 
+> ⚠️ **PR은 반드시 팀원 승인(Approve)을 받은 후에 Merge하세요. 승인 없이 Merge 금지!**
+
 ---
 
 ## 커밋 메시지 규칙
