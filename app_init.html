@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>집에가구쉽다</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<style>
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    width:100%; height:100%;
+    background:#1a1814;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Noto Sans KR', sans-serif;
+  }
+  #root { display:flex; align-items:center; justify-content:center; width:100%; min-height:100vh; }
+  ::-webkit-scrollbar { display:none; }
+
+  @keyframes fadeSlideUp   { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes fadeIn        { from{opacity:0} to{opacity:1} }
+  @keyframes pulse         { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.45;transform:scale(0.8)} }
+  @keyframes spin          { to{transform:rotate(360deg)} }
+  @keyframes rotateCube    { from{transform:rotateY(0deg) rotateX(18deg)} to{transform:rotateY(360deg) rotateX(18deg)} }
+  @keyframes progressShine { from{background-position:-300px 0} to{background-position:300px 0} }
+  @keyframes scaleIn       { from{opacity:0;transform:scale(0.75)} to{opacity:1;transform:scale(1)} }
+  @keyframes bounceDot     { 0%,80%,100%{transform:scale(0.6);opacity:0.3} 40%{transform:scale(1);opacity:1} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+/* ═══════════════════════════════════════════
+   TOKENS & THEME
+═══════════════════════════════════════════ */
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accentColor": "#D4845A",
+  "darkMode": false
+}/*EDITMODE-END*/;
+
+const theme = (dark, accent) => ({
+  bg:       dark ? "#111110" : "#F5F0EA",
+  surface:  dark ? "#1C1B19" : "#FFFFFF",
+  surface2: dark ? "#252320" : "#EDE7DE",
+  surface3: dark ? "#2E2C29" : "#E5DDD3",
+  border:   dark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)",
+  text:     dark ? "#F0EDE8" : "#1A1208",
+  text2:    dark ? "#A09888" : "#8A7460",
+  accent,
+  accentSoft: accent + (dark ? "30" : "18"),
+  accentMid:  accent + "55",
+});
+
+/* ═══════════════════════════════════════════
+   STATUS BAR
+═══════════════════════════════════════════ */
+const StatusBar = ({ tk, transparent }) => {
+  const fg = transparent ? "rgba(255,255,255,0.9)" : tk.text;
+  return (
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 24px 6px", flexShrink:0 }}>
+      <span style={{ fontSize:15, fontWeight:700, color:fg, fontFamily:"DM Sans" }}>9:41</span>
+      <div style={{ display:"flex", gap:5, alignItems:"center" }}>
+        {/* Signal */}
+        <svg width="18" height="13" viewBox="0 0 18 13">
+          {[0,1,2,3].map(i=><rect key={i} x={i*4.5} y={13-(i+1)*3} width="3" height={(i+1)*3} rx="1" fill={fg} opacity={0.3+(i*0.23)}/>)}
+        </svg>
+        {/* Battery */}
+        <svg width="22" height="12" viewBox="0 0 22 12">
+          <rect x="0.5" y="0.5" width="19" height="11" rx="3" stroke={fg} strokeOpacity="0.55" fill="none"/>
+          <rect x="20" y="3.5" width="2" height="5" rx="1" fill={fg} fillOpacity="0.45"/>
+          <rect x="1.5" y="1.5" width="15" height="9" rx="2" fill={fg}/>
+        </svg>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════
+   SCREEN 0 — HOME
+═══════════════════════════════════════════ */
+const HomeScreen = ({ onStart, onHistory, tk }) => {
+  const [angle, setAngle] = useState(0);
+  useEffect(()=>{
+    const id=setInterval(()=>setAngle(a=>a+1.2),40);
+    return()=>clearInterval(id);
+  },[]);
+
+  const recentItems = [
+    { label:"소파", color:"#C4A882" },
+    { label:"책상", color:"#7D5C3C" },
+    { label:"의자", color:"#B09070" },
+  ];
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", background:tk.bg, overflowY:"auto", animation:"fadeSlideUp 0.35s ease" }}>
+      {/* Hero */}
+      <div style={{ position:"relative", background: tk.darkMode ? "#1A1008" : "#2C1810", minHeight:300, overflow:"hidden", flexShrink:0 }}>
+        {/* Background rounded rects */}
+        {[
+          { w:90, h:90, top:-10, right:120, rot:25, op:0.18 },
+          { w:70, h:70, top:30,  right:20,  rot:15, op:0.22 },
+          { w:50, h:50, top:120, right:60,  rot:-10, op:0.14 },
+        ].map((r,i)=>(
+          <div key={i} style={{ position:"absolute", top:r.top, right:r.right, width:r.w, height:r.h, borderRadius:18, border:"2px solid rgba(255,255,255,0.5)", transform:`rotate(${r.rot}deg)`, opacity:r.op }}/>
+        ))}
+
+        {/* 3D Cube */}
+        <div style={{ position:"absolute", top:18, right:16, width:100, height:100, perspective:380 }}>
+          <div style={{ width:64, height:64, margin:"18px auto", transformStyle:"preserve-3d", transform:`rotateY(${angle}deg) rotateX(20deg)` }}>
+            {[
+              { tr:"translateZ(32px)",                 op:1   },
+              { tr:"rotateY(180deg) translateZ(32px)", op:0.45},
+              { tr:"rotateY(90deg) translateZ(32px)",  op:0.7 },
+              { tr:"rotateY(-90deg) translateZ(32px)", op:0.55},
+              { tr:"rotateX(90deg) translateZ(32px)",  op:0.35},
+              { tr:"rotateX(-90deg) translateZ(32px)", op:0.85},
+            ].map((f,i)=>(
+              <div key={i} style={{ position:"absolute", width:64, height:64, background:tk.accent, opacity:f.op, border:"1px solid rgba(255,255,255,0.15)", transform:f.tr }}/>
+            ))}
+          </div>
+        </div>
+
+        <StatusBar tk={tk} transparent={true}/>
+        <div style={{ padding:"8px 24px 36px" }}>
+          <h1 style={{ fontSize:36, fontWeight:800, color:"white", lineHeight:1.15, marginBottom:12 }}>
+            집에<br/>가구 쉽다
+          </h1>
+          <p style={{ fontSize:14, color:"rgba(255,255,255,0.6)", lineHeight:1.65, marginBottom:28, maxWidth:210 }}>
+            사진 한 장으로 중고 가구를<br/>내 방에 3D로 배치해보세요
+          </p>
+          <button
+            onClick={onStart}
+            style={{ display:"flex", alignItems:"center", gap:8, background:tk.accent, color:"white", padding:"13px 22px", borderRadius:50, border:"none", fontSize:15, fontWeight:700, cursor:"pointer", boxShadow:`0 4px 20px ${tk.accent}66` }}
+            onMouseDown={e=>e.currentTarget.style.transform="scale(0.96)"}
+            onMouseUp={e=>e.currentTarget.style.transform=""}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            지금 시작하기
+          </button>
+        </div>
+      </div>
+
+      {/* How it works */}
+      <div style={{ padding:"28px 24px 0" }}>
+        <div style={{ fontSize:12, fontWeight:700, color:tk.text2, letterSpacing:"0.12em", textTransform:"uppercase", marginBottom:20, fontFamily:"DM Sans" }}>How it works</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
+          {[
+            { icon:"🔗", t:"링크 붙여넣기",    d:"당근·번개장터 게시글 URL만 입력하세요" },
+            { icon:"✨", t:"AI 3D 모델 생성",  d:"AI가 자동으로 3D 모델을 만들어드려요" },
+            { icon:"🛋️", t:"내 방에 AR 배치", d:"실제 공간에 가구를 가상으로 배치해요" },
+          ].map((item,i)=>(
+            <div key={i} style={{ display:"flex", gap:16, paddingBottom:i<2?26:0, position:"relative" }}>
+              {i<2 && <div style={{ position:"absolute", left:19, top:42, width:2, height:"calc(100% - 18px)", background:tk.border }}/>}
+              <div style={{ width:40, height:40, borderRadius:"50%", background:tk.surface2, border:`1.5px solid ${tk.border}`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, zIndex:1 }}>
+                <span style={{ fontSize:18 }}>{item.icon}</span>
+              </div>
+              <div style={{ paddingTop:8 }}>
+                <div style={{ fontSize:11, color:tk.accent, fontWeight:700, fontFamily:"DM Sans", marginBottom:3 }}>0{i+1}</div>
+                <div style={{ fontSize:15, fontWeight:700, color:tk.text, marginBottom:3 }}>{item.t}</div>
+                <div style={{ fontSize:13, color:tk.text2, lineHeight:1.55 }}>{item.d}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Recent */}
+      <div style={{ padding:"28px 24px 44px" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+          <div style={{ fontSize:16, fontWeight:700, color:tk.text }}>최근 배치 기록</div>
+          <button onClick={onHistory} style={{ background:"none", border:"none", padding:0, fontSize:13, color:tk.accent, fontWeight:600, cursor:"pointer" }}>전체보기</button>
+        </div>
+        <div style={{ display:"flex", gap:12 }}>
+          {recentItems.map((item,i)=>(
+            <div key={i} style={{ flex:1, background:tk.surface2, borderRadius:16, overflow:"hidden", cursor:"pointer" }}>
+              <div style={{ aspectRatio:"1/1", background:item.color+"22", display:"flex", alignItems:"center", justifyContent:"center", position:"relative" }}>
+                <div style={{ width:44, height:44, background:item.color, borderRadius:10, opacity:0.75 }}/>
+                <div style={{ position:"absolute", bottom:6, right:6, width:20, height:20, borderRadius:"50%", background:tk.accent, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+              </div>
+              <div style={{ padding:"8px 10px 10px" }}>
+                <div style={{ fontSize:12, fontWeight:600, color:tk.text }}>{item.label}</div>
+                <div style={{ fontSize:11, color:tk.text2 }}>2일 전</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════
+   SCREEN 1 — URL INPUT (심플 버전)
+═══════════════════════════════════════════ */
+const UrlInputScreen = ({ onBack, onNext, tk }) => {
+  const [url, setUrl]         = useState("");
+  const [focused, setFocused] = useState(false);
+  const [shake, setShake]     = useState(false);
+  const inputRef = useRef(null);
+
+  const SAMPLES = [
+    { label:"당근마켓 예시", icon:"🥕", url:"https://www.daangn.com/articles/12345678" },
+    { label:"번개장터 예시", icon:"⚡", url:"https://m.bunjang.co.kr/products/987654321" },
+  ];
+
+  const handleGo = () => {
+    if (!url.trim()) {
+      setShake(true);
+      setTimeout(()=>setShake(false), 500);
+      inputRef.current?.focus();
+      return;
+    }
+    onNext(url);
+  };
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", background:tk.bg, animation:"fadeSlideUp 0.3s ease" }}>
+      <StatusBar tk={tk}/>
+      {/* Nav */}
+      <div style={{ display:"flex", alignItems:"center", padding:"4px 16px 16px", gap:10, flexShrink:0 }}>
+        <button onClick={onBack} style={{ width:38, height:38, borderRadius:"50%", background:tk.surface2, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:tk.text }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <span style={{ fontSize:17, fontWeight:700, color:tk.text }}>링크 입력</span>
+      </div>
+
+      <div style={{ flex:1, padding:"0 24px", display:"flex", flexDirection:"column" }}>
+        <p style={{ fontSize:14, color:tk.text2, lineHeight:1.65, marginBottom:28 }}>
+          당근마켓·번개장터·중고나라 게시글 URL을<br/>붙여넣으면 나머지는 AI가 다 해드려요
+        </p>
+
+        {/* Input */}
+        <div style={{
+          display:"flex", alignItems:"center", gap:8,
+          padding:"4px 4px 4px 16px",
+          border:`1.5px solid ${focused ? tk.accent : tk.border}`,
+          borderRadius:18, background:tk.surface,
+          boxShadow: focused ? `0 0 0 3px ${tk.accentSoft}` : "none",
+          transition:"border-color 0.2s, box-shadow 0.2s",
+          marginBottom:16,
+          ...(shake ? { animation:"shakeX 0.4s ease" } : {})
+        }}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={focused?tk.accent:tk.text2} strokeWidth="2" strokeLinecap="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+          <input
+            ref={inputRef}
+            value={url}
+            onChange={e=>setUrl(e.target.value)}
+            onFocus={()=>setFocused(true)}
+            onBlur={()=>setFocused(false)}
+            onKeyDown={e=>e.key==="Enter"&&handleGo()}
+            placeholder="https://www.daangn.com/articles/..."
+            style={{ flex:1, padding:"12px 0", fontSize:13, color:tk.text, background:"transparent", border:"none", outline:"none", fontFamily:"DM Sans, monospace" }}
+          />
+          {url && (
+            <button onClick={()=>setUrl("")} style={{ width:30, height:30, borderRadius:8, background:tk.surface2, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginRight:4 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={tk.text2} strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          )}
+        </div>
+
+        {/* Platform chips */}
+        <div style={{ display:"flex", gap:8, marginBottom:28 }}>
+          {[{n:"당근마켓",e:"🥕"},{n:"번개장터",e:"⚡"},{n:"중고나라",e:"🛍️"}].map(p=>(
+            <div key={p.n} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 11px", borderRadius:20, background:tk.surface2, border:`1px solid ${tk.border}` }}>
+              <span style={{ fontSize:12 }}>{p.e}</span>
+              <span style={{ fontSize:11, color:tk.text2, fontWeight:500 }}>{p.n}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Demo sample links */}
+        <div style={{ background:tk.surface2, borderRadius:16, padding:"14px 16px" }}>
+          <div style={{ fontSize:11, fontWeight:700, color:tk.text2, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10, fontFamily:"DM Sans" }}>데모 링크로 체험</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {SAMPLES.map((s,i)=>(
+              <button key={i} onClick={()=>{ setUrl(s.url); setTimeout(()=>inputRef.current?.focus(),50); }}
+                style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", background:tk.surface, borderRadius:10, border:`1px solid ${tk.border}`, cursor:"pointer", textAlign:"left" }}>
+                <span style={{ fontSize:14 }}>{s.icon}</span>
+                <span style={{ fontSize:12, color:tk.text2, fontFamily:"DM Sans", flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.url}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={tk.accent} strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* CTA */}
+      <div style={{ padding:"24px 24px 40px", flexShrink:0 }}>
+        <button onClick={handleGo} style={{
+          width:"100%", padding:"17px", borderRadius:18, border:"none",
+          background:`linear-gradient(135deg, ${tk.accent}, #E8A070)`,
+          color:"white", fontSize:16, fontWeight:700, cursor:"pointer",
+          boxShadow:`0 6px 24px ${tk.accent}55`,
+          display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+          opacity: url ? 1 : 0.5, transition:"opacity 0.2s, transform 0.15s"
+        }}
+          onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
+          onMouseUp={e=>e.currentTarget.style.transform=""}
+        >
+          3D 모델 생성하기
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </div>
+      <style>{`@keyframes shakeX{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}`}</style>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════
+   SCREEN 2 — LOADING
+═══════════════════════════════════════════ */
+const LoadingScreen = ({ url, onComplete, tk }) => {
+  const [progress, setProgress]     = useState(0);
+  const [stepIdx,  setStepIdx]      = useState(0);
+  const [angle,    setAngle]        = useState(0);
+
+  const STEPS = [
+    { label:"게시글 크롤링",      sub:"이미지 · 텍스트 · 치수 정보 수집",     icon:"🔍", pct:12 },
+    { label:"최적 이미지 선정",   sub:"GPT-4o Vision 분석 중",                icon:"🤖", pct:24 },
+    { label:"치수 측정",          sub:"Metric3D 깊이 추정 · W×H×D 계산",      icon:"📐", pct:22 },
+    { label:"배경 제거 · 전처리", sub:"SAM 세그멘테이션 · LaMa 인페인팅",     icon:"✂️", pct:22 },
+    { label:"3D 모델 생성",       sub:"TRELLIS 변환 중…",                       icon:"🧊", pct:20 },
+  ];
+
+  useEffect(()=>{
+    const TOTAL = 5500;
+    const start = Date.now();
+    const tick = ()=>{
+      const p = Math.min(100,(Date.now()-start)/TOTAL*100);
+      setProgress(p);
+      let acc=0;
+      for(let i=0;i<STEPS.length;i++){
+        acc+=STEPS[i].pct;
+        if(p<=acc){ setStepIdx(i); break; }
+        if(i===STEPS.length-1) setStepIdx(i);
+      }
+      if(p<100) requestAnimationFrame(tick);
+      else setTimeout(onComplete, 500);
+    };
+    requestAnimationFrame(tick);
+  },[]);
+
+  useEffect(()=>{
+    const id=setInterval(()=>setAngle(a=>a+2),30);
+    return()=>clearInterval(id);
+  },[]);
+
+  const domain = url.includes("daangn") ? "당근마켓" : url.includes("bunjang") ? "번개장터" : "중고나라";
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", background:tk.darkMode?"#0C0B09":"#1A130C", position:"relative", overflow:"hidden" }}>
+      {/* Ambient */}
+      <div style={{ position:"absolute", top:"35%", left:"50%", transform:"translate(-50%,-50%)", width:280, height:280, borderRadius:"50%", background:tk.accent, opacity:0.07, filter:"blur(70px)", pointerEvents:"none" }}/>
+
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"40px 28px", position:"relative", zIndex:1 }}>
+
+        {/* 3D Cube */}
+        <div style={{ width:150, height:150, perspective:500, marginBottom:32, flexShrink:0 }}>
+          <div style={{ width:88, height:88, margin:"31px auto", transformStyle:"preserve-3d", transform:`rotateY(${angle}deg) rotateX(22deg)`, transition:"transform 0s" }}>
+            {[
+              { tr:"translateZ(44px)",                  op:1   },
+              { tr:"rotateY(180deg) translateZ(44px)",  op:0.45},
+              { tr:"rotateY(90deg) translateZ(44px)",   op:0.7 },
+              { tr:"rotateY(-90deg) translateZ(44px)",  op:0.55},
+              { tr:"rotateX(90deg) translateZ(44px)",   op:0.35},
+              { tr:"rotateX(-90deg) translateZ(44px)",  op:0.85},
+            ].map((f,i)=>(
+              <div key={i} style={{ position:"absolute", width:88, height:88, background:tk.accent, opacity:f.op, border:"1px solid rgba(255,255,255,0.12)", transform:f.tr }}/>
+            ))}
+          </div>
+          {/* shadow */}
+          <div style={{ width:60, height:10, margin:"0 auto", borderRadius:"50%", background:"rgba(0,0,0,0.35)", filter:"blur(8px)" }}/>
+        </div>
+
+        {/* Title */}
+        <div style={{ textAlign:"center", marginBottom:32 }}>
+          <div style={{ fontSize:22, fontWeight:800, color:"white", marginBottom:6 }}>3D 모델 생성 중</div>
+          <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", fontFamily:"DM Sans" }}>{domain} 게시글 분석 중…</div>
+        </div>
+
+        {/* Progress */}
+        <div style={{ width:"100%", marginBottom:32 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
+            <span style={{ fontSize:13, color:"rgba(255,255,255,0.7)", fontWeight:600 }}>
+              {STEPS[stepIdx].icon}&nbsp;{STEPS[stepIdx].label}
+            </span>
+            <span style={{ fontSize:14, fontWeight:700, color:tk.accent, fontFamily:"DM Sans" }}>{Math.round(progress)}%</span>
+          </div>
+          <div style={{ height:7, background:"rgba(255,255,255,0.08)", borderRadius:7, overflow:"hidden" }}>
+            <div style={{ height:"100%", borderRadius:7, width:`${progress}%`, transition:"width 0.15s linear",
+              background:`linear-gradient(90deg, ${tk.accent}, #E8B070)`,
+              boxShadow:`0 0 16px ${tk.accent}80`
+            }}/>
+          </div>
+          <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:6, fontFamily:"DM Sans" }}>{STEPS[stepIdx].sub}</div>
+        </div>
+
+        {/* Steps list */}
+        <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:12 }}>
+          {STEPS.map((step,i)=>{
+            const done   = i < stepIdx;
+            const active = i === stepIdx;
+            const future = i > stepIdx;
+            return (
+              <div key={i} style={{ display:"flex", alignItems:"center", gap:12, opacity:future?0.28:1, transition:"opacity 0.4s" }}>
+                {/* indicator */}
+                <div style={{ width:34, height:34, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
+                  background: done ? tk.accent : active ? "transparent" : "rgba(255,255,255,0.05)",
+                  border: active ? `1.5px solid ${tk.accent}` : "none",
+                  transition:"all 0.3s"
+                }}>
+                  {done
+                    ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    : active
+                      ? <div style={{ display:"flex", gap:3 }}>
+                          {[0,1,2].map(j=><div key={j} style={{ width:5, height:5, borderRadius:"50%", background:tk.accent, animation:`bounceDot 1.2s ${j*0.18}s infinite` }}/>)}
+                        </div>
+                      : <span style={{ fontSize:14 }}>{step.icon}</span>
+                  }
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13, fontWeight: active||done ? 600 : 400, color: done?"rgba(255,255,255,0.55)":active?"white":"rgba(255,255,255,0.3)", lineHeight:1 }}>{step.label}</div>
+                  {active && <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:3, fontFamily:"DM Sans" }}>{step.sub}</div>}
+                </div>
+                {done && <span style={{ fontSize:11, fontWeight:700, color:tk.accent, fontFamily:"DM Sans" }}>완료</span>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════
+   SCREEN 3 — 3D MODEL PREVIEW (model-viewer 기반)
+═══════════════════════════════════════════ */
+const ModelPreviewScreen = ({ onBack, onAR, tk }) => {
+  const [tab, setTab] = useState("3d");
+  const [loaded, setLoaded] = useState(false);
+  const mvRef = useRef(null);
+
+  // sample .glb URL — 실제 서비스에선 백엔드에서 생성된 모델 URL이 들어올 자리
+  const MODEL_URL = "model.glb";
+
+  useEffect(()=>{
+    const el = mvRef.current;
+    if(!el) return;
+    const onLoad = ()=>setLoaded(true);
+    const onError = ()=>setLoaded(true); // 에러여도 오버레이는 내림
+    el.addEventListener("load", onLoad);
+    el.addEventListener("error", onError);
+    // 안전장치: 6초 후 무조건 오버레이 해제 (실제 서비스에선 백엔드 .glb가 정상 로드됨)
+    const timer = setTimeout(()=>setLoaded(true), 6000);
+    return ()=>{
+      el.removeEventListener("load", onLoad);
+      el.removeEventListener("error", onError);
+      clearTimeout(timer);
+    };
+  },[tab]);
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", background:tk.bg, animation:"fadeIn 0.3s" }}>
+      <StatusBar tk={tk}/>
+      {/* Nav */}
+      <div style={{ display:"flex", alignItems:"center", padding:"4px 16px 12px", gap:8, flexShrink:0 }}>
+        <button onClick={onBack} style={{ width:38, height:38, borderRadius:"50%", background:tk.surface2, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:tk.text }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <span style={{ fontSize:17, fontWeight:700, color:tk.text }}>3D 미리보기</span>
+        <div style={{ marginLeft:"auto", display:"flex", gap:2, background:tk.surface2, borderRadius:10, padding:3 }}>
+          {["3d","치수"].map(t=>(
+            <button key={t} onClick={()=>setTab(t)} style={{ padding:"5px 12px", borderRadius:8, border:"none", cursor:"pointer", fontSize:12, fontWeight:700, background:tab===t?tk.surface:"transparent", color:tab===t?tk.text:tk.text2, transition:"all 0.2s" }}>{t.toUpperCase()}</button>
+          ))}
+        </div>
+      </div>
+
+      {tab==="3d" ? (
+        <>
+          {/* model-viewer viewport */}
+          <div style={{ flex:1, background: tk.darkMode?"#0F0E0C":"#EDE7DE", margin:"0 20px", borderRadius:24, overflow:"hidden", position:"relative", minHeight:260 }}>
+            <model-viewer
+              ref={mvRef}
+              src={MODEL_URL}
+              alt="3D 가구 모델"
+              camera-controls=""
+              auto-rotate=""
+              auto-rotate-delay="500"
+              rotation-per-second="20deg"
+              shadow-intensity="1"
+              exposure="1"
+              environment-image="neutral"
+              style={{ width:"100%", height:"100%", background:"transparent", "--poster-color":"transparent" }}
+            ></model-viewer>
+
+            {/* Loading overlay */}
+            {!loaded && (
+              <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background: tk.darkMode?"rgba(15,14,12,0.85)":"rgba(237,231,222,0.85)", backdropFilter:"blur(2px)" }}>
+                <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
+                  <div style={{ width:32, height:32, border:`3px solid ${tk.accentSoft}`, borderTopColor:tk.accent, borderRadius:"50%", animation:"spin 0.9s linear infinite" }}/>
+                  <span style={{ fontSize:12, color:tk.text2, fontWeight:600 }}>3D 모델 불러오는 중…</span>
+                </div>
+              </div>
+            )}
+
+            {/* Drag hint */}
+            <div style={{ position:"absolute", bottom:14, left:0, right:0, display:"flex", justifyContent:"center", pointerEvents:"none" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:5, background:"rgba(0,0,0,0.45)", backdropFilter:"blur(6px)", padding:"5px 12px", borderRadius:20 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="2"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M6 14v-3a2 2 0 0 0-4 0v4c0 4 4 7 8 7s8-3 8-7v-3"/></svg>
+                <span style={{ fontSize:11, color:"rgba(255,255,255,0.85)" }}>드래그하여 회전 · 핀치하여 확대</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Info card */}
+          <div style={{ margin:"16px 20px 0", background:tk.surface, borderRadius:20, padding:"16px 18px", border:`1px solid ${tk.border}` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+              <div>
+                <div style={{ fontSize:17, fontWeight:800, color:tk.text, marginBottom:4 }}>소파 (원목 2인)</div>
+                <div style={{ fontSize:12, color:tk.text2 }}>당근마켓 게시글 · 3D 생성 완료</div>
+              </div>
+              <div style={{ background:tk.accentSoft, border:`1px solid ${tk.accentMid}`, padding:"4px 10px", borderRadius:20 }}>
+                <span style={{ fontSize:11, fontWeight:700, color:tk.accent }}>3D 완성</span>
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:8, marginTop:14 }}>
+              {[["W","150cm"],["H","80cm"],["D","75cm"]].map(([k,v])=>(
+                <div key={k} style={{ flex:1, background:tk.surface2, borderRadius:12, padding:"10px 0", textAlign:"center" }}>
+                  <div style={{ fontSize:11, color:tk.text2, marginBottom:2 }}>{k}</div>
+                  <div style={{ fontSize:15, fontWeight:700, color:tk.text, fontFamily:"DM Sans" }}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : (
+        /* Dimensions tab */
+        <div style={{ flex:1, overflowY:"auto", padding:"0 20px" }}>
+          <div style={{ background:tk.surface2, borderRadius:20, overflow:"hidden", marginBottom:16 }}>
+            <div style={{ background:"#D4C5B2", aspectRatio:"16/9", position:"relative", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              {/* Dimension diagram SVG */}
+              <svg viewBox="0 0 280 160" style={{ width:"80%", maxWidth:260 }}>
+                {/* sofa body */}
+                <rect x="40" y="60" width="200" height="60" rx="6" fill={tk.accent} opacity="0.8"/>
+                <rect x="38" y="48" width="22" height="74" rx="5" fill={tk.accent}/>
+                <rect x="220" y="48" width="22" height="74" rx="5" fill={tk.accent}/>
+                <rect x="40" y="82" width="200" height="20" rx="4" fill={tk.accent} opacity="0.5"/>
+                {/* Width arrow */}
+                <line x1="38" y1="140" x2="242" y2="140" stroke="#E07A5F" strokeWidth="1.5"/>
+                <line x1="38" y1="135" x2="38" y2="145" stroke="#E07A5F" strokeWidth="1.5"/>
+                <line x1="242" y1="135" x2="242" y2="145" stroke="#E07A5F" strokeWidth="1.5"/>
+                <text x="140" y="155" textAnchor="middle" fill="#E07A5F" fontSize="11" fontFamily="DM Sans" fontWeight="700">W · 150cm</text>
+                {/* Height arrow */}
+                <line x1="14" y1="48" x2="14" y2="122" stroke="#3B82F6" strokeWidth="1.5"/>
+                <line x1="9" y1="48" x2="19" y2="48" stroke="#3B82F6" strokeWidth="1.5"/>
+                <line x1="9" y1="122" x2="19" y2="122" stroke="#3B82F6" strokeWidth="1.5"/>
+                <text x="8" y="90" textAnchor="middle" fill="#3B82F6" fontSize="10" fontFamily="DM Sans" fontWeight="700" transform="rotate(-90,8,88)">H · 80</text>
+                {/* Depth label */}
+                <text x="140" y="105" textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize="10" fontFamily="DM Sans">D · 75cm</text>
+              </svg>
+            </div>
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {[
+              { label:"너비 (W)", val:"150 cm", color:"#E07A5F" },
+              { label:"높이 (H)", val:"80 cm",  color:"#3B82F6" },
+              { label:"깊이 (D)", val:"75 cm",  color:"#10B981" },
+              { label:"소재",     val:"원목 / 패브릭", color:tk.text2 },
+              { label:"색상",     val:"베이지 / 브라운", color:tk.text2 },
+            ].map((row,i)=>(
+              <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"12px 16px", background:tk.surface, borderRadius:12, border:`1px solid ${tk.border}` }}>
+                <span style={{ fontSize:14, color:tk.text2 }}>{row.label}</span>
+                <span style={{ fontSize:14, fontWeight:700, color:row.color, fontFamily:"DM Sans" }}>{row.val}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* CTA */}
+      <div style={{ padding:"16px 20px 36px", flexShrink:0 }}>
+        <button onClick={onAR} style={{
+          width:"100%", padding:"17px", borderRadius:18, border:"none",
+          background:`linear-gradient(135deg, ${tk.accent}, #E8A070)`,
+          color:"white", fontSize:16, fontWeight:700, cursor:"pointer",
+          boxShadow:`0 6px 24px ${tk.accent}55`,
+          display:"flex", alignItems:"center", justifyContent:"center", gap:10
+        }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round"><path d="M12 2l8 4v6c0 4-3.5 7.7-8 9-4.5-1.3-8-5-8-9V6z"/><path d="M12 8v8M8 10l4-2 4 2"/></svg>
+          AR로 방에 배치하기
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════
+   SCREEN 4 — AR PLACEMENT (Unity 통합형)
+   ─────────────────────────────────────────────
+   실제 서비스에서는 이 화면의 viewport 영역을
+   Unity WebGL iframe/canvas로 교체.
+   React ↔ Unity 통신 예시:
+     unityInstance.SendMessage("ARController", "SpawnItem", id)
+     unityInstance.SendMessage("ARController", "DeleteSelected")
+     window.dispatchEvent(new CustomEvent("unity:planeFound"))
+═══════════════════════════════════════════ */
+const ARScreen = ({ onBack, onSave, tk }) => {
+  const [view,  setView]      = useState("ar");
+  const [saved, setSaved]     = useState(false);
+  const [planeFound, setPlaneFound] = useState(false);
+  const [placed, setPlaced]   = useState(false);
+
+  // 데모용 mock — 실제로는 Unity가 평면 인식 이벤트를 보내옴
+  useEffect(()=>{
+    const t1 = setTimeout(()=>setPlaneFound(true), 1800);
+    const t2 = setTimeout(()=>setPlaced(true), 3200);
+    return ()=>{ clearTimeout(t1); clearTimeout(t2); };
+  },[]);
+
+  const handleSave  = ()=>{ setSaved(true); setTimeout(()=>{ setSaved(false); onSave(); },1600); };
+  const handleReset = ()=>{ setPlaced(false); setTimeout(()=>setPlaced(true), 600); };
+  // 실제 서비스: window.unityInstance?.SendMessage("ARController","DeleteSelected")
+  const handleDelete = ()=>setPlaced(false);
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", background:"#0A0908", position:"relative", overflow:"hidden" }}>
+      {/* Top bar */}
+      <div style={{ position:"absolute", top:0, left:0, right:0, zIndex:30, padding:"50px 16px 0", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <button onClick={onBack} style={{ width:40, height:40, borderRadius:"50%", background:"rgba(0,0,0,0.5)", backdropFilter:"blur(10px)", border:"none", color:"white", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <div style={{ display:"flex", gap:3, background:"rgba(0,0,0,0.5)", backdropFilter:"blur(10px)", borderRadius:30, padding:4 }}>
+          {["AR","3D"].map(v=>(
+            <button key={v} onClick={()=>setView(v.toLowerCase())} style={{ padding:"7px 16px", borderRadius:24, border:"none", cursor:"pointer", fontSize:12, fontWeight:700,
+              background: view===v.toLowerCase()?tk.accent:"transparent", color:"white", transition:"background 0.2s"
+            }}>{v}</button>
+          ))}
+        </div>
+        <button onClick={handleSave} style={{ padding:"9px 20px", borderRadius:24, background:tk.accent, border:"none", color:"white", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:`0 4px 14px ${tk.accent}70` }}>
+          저장
+        </button>
+      </div>
+
+      {/* === Unity WebGL viewport (이 영역이 Unity로 대체됨) === */}
+      <div id="unity-canvas-container" style={{ flex:1, position:"relative", overflow:"hidden" }}>
+        {/* Mock 카메라 피드 + 방 SVG */}
+        <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%" }} viewBox="0 0 375 580" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#B0A090"/><stop offset="100%" stopColor="#9A8878"/>
+            </linearGradient>
+            <linearGradient id="fg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#C0AE92"/><stop offset="100%" stopColor="#A89878"/>
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" width="375" height="360" fill="url(#wg)"/>
+          <polygon points="0,360 375,360 440,580 -65,580" fill="url(#fg)"/>
+          {[0,28,56,84,112,140,168,196,224].map(y=><line key={y} x1={-65+(y/224)*505} y1={360+y} x2={375+(y/224)*65} y2={360+y} stroke="rgba(0,0,0,0.05)" strokeWidth="1"/>)}
+          {[0.12,0.25,0.38,0.5,0.62,0.75,0.88].map((x,i)=><line key={i} x1={x*375} y1={360} x2={x*440-65} y2={580} stroke="rgba(0,0,0,0.04)" strokeWidth="1"/>)}
+          <polygon points="0,0 0,360 90,360 90,0" fill="rgba(0,0,0,0.07)"/>
+          <rect x="228" y="38" width="112" height="136" rx="4" fill="#A8CDE8" opacity="0.35"/>
+          <rect x="228" y="38" width="112" height="136" rx="4" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="2"/>
+          <line x1="284" y1="38" x2="284" y2="174" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
+          <line x1="228" y1="106" x2="340" y2="106" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
+          <line x1="0" y1="358" x2="375" y2="358" stroke="rgba(255,255,255,0.18)" strokeWidth="2"/>
+
+          {/* AR plane indicator (Unity가 인식한 평면을 시각화) */}
+          {planeFound && !placed && (
+            <ellipse cx="187" cy="470" rx="120" ry="32" fill="none" stroke={tk.accent} strokeWidth="2" strokeDasharray="6 4" opacity="0.7">
+              <animate attributeName="opacity" values="0.4;0.9;0.4" dur="1.6s" repeatCount="indefinite"/>
+            </ellipse>
+          )}
+        </svg>
+
+        {/* AR corner guides */}
+        {[[10,100],[365,100],[10,560],[365,560]].map(([x,y],i)=>{
+          const d = i===0?"M8,0 L0,0 L0,8" : i===1?"M0,0 L8,0 L8,8" : i===2?"M0,0 L0,8 L8,8" : "M0,0 L8,0 L0,8";
+          return <div key={i} style={{ position:"absolute", left:x-7, top:y-7, opacity:0.55 }}><svg width="14" height="14" viewBox="0 0 14 14"><path d={d} fill="none" stroke={tk.accent} strokeWidth="2" strokeLinecap="round"/></svg></div>;
+        })}
+
+        {/* Mock 가구 (Unity가 그리는 3D 모델 자리) */}
+        {placed && (
+          <div style={{ position:"absolute", left:90, top:380, width:200, height:130,
+            filter:`drop-shadow(0 14px 26px rgba(0,0,0,0.6))`,
+            animation:"scaleIn 0.4s ease"
+          }}>
+            <svg viewBox="0 0 200 130" style={{ width:"100%", height:"100%" }}>
+              <rect x="12" y="56" width="176" height="50" rx="9" fill={tk.accent} opacity="0.95"/>
+              <rect x="10" y="42" width="22"  height="64" rx="7" fill={tk.accent}/>
+              <rect x="168" y="42" width="22" height="64" rx="7" fill={tk.accent}/>
+              <rect x="12" y="84" width="176" height="18" rx="5" fill={tk.accent} opacity="0.5"/>
+              <rect x="16" y="62" width="48"  height="28" rx="5" fill="rgba(255,255,255,0.22)"/>
+              <rect x="70" y="62" width="60"  height="28" rx="5" fill="rgba(255,255,255,0.22)"/>
+              <rect x="136" y="62" width="48" height="28" rx="5" fill="rgba(255,255,255,0.22)"/>
+            </svg>
+          </div>
+        )}
+
+        {/* AR 상태 안내 (Unity ↔ React 메시지로 표시) */}
+        <div style={{ position:"absolute", top:108, left:0, right:0, display:"flex", justifyContent:"center", pointerEvents:"none" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, background:"rgba(0,0,0,0.6)", backdropFilter:"blur(10px)", padding:"8px 14px", borderRadius:24, border:`1px solid ${tk.accent}55` }}>
+            {!planeFound ? (
+              <>
+                <div style={{ width:8, height:8, borderRadius:"50%", background:tk.accent, animation:"pulse 1.4s infinite" }}/>
+                <span style={{ fontSize:12, color:"white", fontWeight:600 }}>바닥을 비춰주세요…</span>
+              </>
+            ) : !placed ? (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={tk.accent} strokeWidth="2.4"><circle cx="12" cy="12" r="3"/><path d="M12 5v3M12 16v3M5 12h3M16 12h3"/></svg>
+                <span style={{ fontSize:12, color:"white", fontWeight:600 }}>탭하여 가구 배치</span>
+              </>
+            ) : (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7BD389" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                <span style={{ fontSize:12, color:"white", fontWeight:600 }}>핀치 · 회전 제스처로 조절하세요</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom controls — Unity 액션 트리거 */}
+      <div style={{ background:"rgba(10,9,8,0.97)", backdropFilter:"blur(18px)", borderTop:"1px solid rgba(255,255,255,0.06)", padding:"14px 16px 28px", flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:placed?12:0 }}>
+          <div>
+            <div style={{ fontSize:15, fontWeight:700, color:"white" }}>소파 (원목 2인)</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>
+              {placed ? "두 손가락으로 핀치/회전" : "바닥 인식 후 탭하여 배치"}
+            </div>
+          </div>
+          {placed && (
+            <button onClick={handleReset}
+              style={{ display:"flex", alignItems:"center", gap:5, padding:"8px 12px", borderRadius:20, background:"rgba(255,255,255,0.08)", border:"none", color:"white", cursor:"pointer", fontSize:12, fontWeight:600 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 4v5h5"/></svg>
+              초기화
+            </button>
+          )}
+        </div>
+
+        {/* 액션 버튼들 */}
+        {placed && (
+          <div style={{ display:"flex", gap:8 }}>
+            <button
+              onClick={()=>{/* unityInstance.SendMessage("ARController","DuplicateSelected") */}}
+              style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"12px", borderRadius:14, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.08)", color:"white", cursor:"pointer", fontSize:13, fontWeight:600 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              복제
+            </button>
+            <button
+              onClick={handleDelete}
+              style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"12px", borderRadius:14, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.08)", color:"white", cursor:"pointer", fontSize:13, fontWeight:600 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+              삭제
+            </button>
+            <button
+              onClick={()=>{/* unityInstance.SendMessage("ARController","CapturePhoto") */}}
+              style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"12px", borderRadius:14, background:tk.accent, border:"none", color:"white", cursor:"pointer", fontSize:13, fontWeight:700, boxShadow:`0 4px 14px ${tk.accent}70` }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              촬영
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Save toast */}
+      {saved && (
+        <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)", zIndex:100,
+          background:"rgba(0,0,0,0.88)", backdropFilter:"blur(12px)", borderRadius:20, padding:"18px 28px",
+          display:"flex", alignItems:"center", gap:12, animation:"scaleIn 0.25s ease" }}>
+          <div style={{ width:36, height:36, borderRadius:"50%", background:tk.accent, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <span style={{ fontSize:15, fontWeight:700, color:"white" }}>배치 완료!</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════
+   SCREEN — HISTORY (전체 배치 기록)
+═══════════════════════════════════════════ */
+const HistoryScreen = ({ onBack, tk }) => {
+  const ITEMS = [
+    { label:"원목 2인 소파",   color:"#C4A882", date:"오늘",   room:"거실" },
+    { label:"빈티지 책상",     color:"#7D5C3C", date:"어제",   room:"서재" },
+    { label:"라탄 체어",       color:"#A89072", date:"2일 전", room:"거실" },
+    { label:"플로어 램프",     color:"#D4B896", date:"3일 전", room:"침실" },
+    { label:"5단 책장",        color:"#8B6F4E", date:"4일 전", room:"서재" },
+    { label:"원형 사이드테이블", color:"#B89876", date:"5일 전", room:"거실" },
+    { label:"패브릭 1인 소파", color:"#9C8264", date:"1주 전", room:"거실" },
+    { label:"우드 스툴",       color:"#A0856B", date:"1주 전", room:"주방" },
+    { label:"테이블 조명",     color:"#C9A878", date:"2주 전", room:"침실" },
+  ];
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", background:tk.bg, animation:"fadeSlideUp 0.3s ease", overflow:"hidden" }}>
+      <StatusBar tk={tk}/>
+
+      {/* Nav */}
+      <div style={{ display:"flex", alignItems:"center", padding:"4px 16px 16px", gap:8, flexShrink:0 }}>
+        <button onClick={onBack} style={{ width:38, height:38, borderRadius:"50%", background:tk.surface2, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:tk.text }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <span style={{ fontSize:17, fontWeight:700, color:tk.text }}>배치 기록</span>
+        <span style={{ fontSize:13, color:tk.text2, fontWeight:500 }}>· {ITEMS.length}개</span>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex:1, overflow:"auto", padding:"0 16px 24px" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+          {ITEMS.map((it,i)=>(
+            <div key={i} style={{ background:tk.surface, borderRadius:16, overflow:"hidden", border:`1px solid ${tk.border}`, cursor:"pointer" }}>
+              <div style={{ aspectRatio:"1/1", background:it.color+"22", position:"relative", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <div style={{ width:"55%", height:"35%", background:it.color, borderRadius:10, opacity:0.85 }}/>
+                <div style={{ position:"absolute", bottom:8, right:8, width:22, height:22, borderRadius:"50%", background:tk.accent, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+              </div>
+              <div style={{ padding:"9px 11px 11px" }}>
+                <div style={{ fontSize:12, fontWeight:700, color:tk.text, marginBottom:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{it.label}</div>
+                <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:tk.text2 }}>
+                  <span>{it.room}</span>
+                  <span>{it.date}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════
+   RESULT SCREEN
+═══════════════════════════════════════════ */
+const ResultScreen = ({ onRestart, tk }) => (
+  <div style={{ flex:1, display:"flex", flexDirection:"column", background:tk.bg, animation:"fadeSlideUp 0.4s ease" }}>
+    <StatusBar tk={tk}/>
+    <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"24px 28px" }}>
+      <div style={{ width:90, height:90, borderRadius:"50%", background:`linear-gradient(135deg,${tk.accent},#E8A070)`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:22, boxShadow:`0 14px 36px ${tk.accent}50`, animation:"scaleIn 0.4s ease" }}>
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <h2 style={{ fontSize:26, fontWeight:800, color:tk.text, marginBottom:8 }}>배치 완료!</h2>
+      <p style={{ fontSize:14, color:tk.text2, textAlign:"center", lineHeight:1.7, marginBottom:36 }}>3D 배치 이미지가 저장되었어요.</p>
+
+      <div style={{ width:"100%", background:tk.surface, borderRadius:20, overflow:"hidden", marginBottom:28, border:`1px solid ${tk.border}` }}>
+        <div style={{ background:"#C4B5A2", aspectRatio:"16/9", display:"flex", alignItems:"center", justifyContent:"center",
+          backgroundImage:"repeating-linear-gradient(45deg,#C4B5A2,#C4B5A2 8px,#D4C5B2 8px,#D4C5B2 16px)" }}>
+          <div style={{ background:"rgba(255,255,255,0.8)", padding:"8px 18px", borderRadius:10, fontSize:12, color:"#7A6048", fontWeight:600 }}>AR 배치 결과</div>
+        </div>
+        <div style={{ padding:"14px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div>
+            <div style={{ fontSize:15, fontWeight:700, color:tk.text }}>소파 (원목 2인)</div>
+            <div style={{ fontSize:12, color:tk.text2 }}>방 배치 완료 · 방금 전</div>
+          </div>
+          <div style={{ display:"flex", gap:2 }}>
+            {[1,2,3,4,5].map(s=>(
+              <svg key={s} width="14" height="14" viewBox="0 0 24 24" fill={s<=4?"#E8A84C":"none"} stroke="#E8A84C" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display:"flex", flexDirection:"column", gap:10, width:"100%" }}>
+        <button style={{ padding:"16px", borderRadius:18, border:"none", background:`linear-gradient(135deg,${tk.accent},#E8A070)`, color:"white", fontSize:15, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          공유하기
+        </button>
+        <button onClick={onRestart} style={{ padding:"16px", borderRadius:18, border:`1.5px solid ${tk.border}`, background:tk.surface2, color:tk.text, fontSize:15, fontWeight:600, cursor:"pointer" }}>
+          다른 가구 배치하기
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+/* ═══════════════════════════════════════════
+   APP ROOT
+═══════════════════════════════════════════ */
+const App = () => {
+  const raw = useTweaks(TWEAK_DEFAULTS);
+  const tweaks      = raw?.tweaks      || TWEAK_DEFAULTS;
+  const TweaksPanel = raw?.TweaksPanel || (({children})=>null);
+  const TweakSection= raw?.TweakSection|| (({children})=>null);
+  const TweakColor  = raw?.TweakColor  || (()=>null);
+  const TweakToggle = raw?.TweakToggle || (()=>null);
+
+  const [screen, setScreen] = useState("home");
+  const [url,    setUrl]    = useState("");
+
+  const tk = theme(tweaks.darkMode, tweaks.accentColor);
+  // pass darkMode into tk for conditional use
+  tk.darkMode = tweaks.darkMode;
+
+  return (
+    <div style={{
+      width:375, height:812,
+      borderRadius:50, overflow:"hidden",
+      boxShadow:"0 36px 90px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.07), inset 0 0 0 1px rgba(255,255,255,0.04)",
+      display:"flex", flexDirection:"column",
+      background:tk.bg,
+      position:"relative",
+      fontFamily:"'Noto Sans KR', sans-serif",
+    }}>
+      {screen==="home"    && <HomeScreen        onStart={()=>setScreen("url")} onHistory={()=>setScreen("history")} tk={tk}/>}
+      {screen==="history" && <HistoryScreen    onBack={()=>setScreen("home")} tk={tk}/>}
+      {screen==="url"     && <UrlInputScreen   onBack={()=>setScreen("home")} onNext={u=>{setUrl(u);setScreen("loading")}} tk={tk}/>}
+      {screen==="loading" && <LoadingScreen    url={url} onComplete={()=>setScreen("preview")} tk={tk}/>}
+      {screen==="preview" && <ModelPreviewScreen onBack={()=>setScreen("url")} onAR={()=>setScreen("ar")} tk={tk}/>}
+      {screen==="ar"      && <ARScreen         onBack={()=>setScreen("preview")} onSave={()=>setScreen("result")} tk={tk}/>}
+      {screen==="result"  && <ResultScreen     onRestart={()=>setScreen("home")} tk={tk}/>}
+
+      <TweaksPanel>
+        <TweakSection label="색상">
+          <TweakColor id="accentColor" label="포인트 컬러"/>
+        </TweakSection>
+        <TweakSection label="테마">
+          <TweakToggle id="darkMode" label="다크 모드"/>
+        </TweakSection>
+      </TweaksPanel>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# build output
+dist/
+build/
+out/
+
+# env files
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Unity
+unity-ar/Library/
+unity-ar/Temp/
+unity-ar/Obj/
+unity-ar/Build/
+unity-ar/Logs/
+unity-ar/UserSettings/
+*.csproj
+*.sln
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# aidlc
+.aidlc-rule-details/

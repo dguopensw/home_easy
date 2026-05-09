@@ -1,0 +1,22 @@
+{
+  "name": "집에 가구 쉽다",
+  "short_name": "가구쉽다",
+  "description": "중고 가구를 AR로 방에 배치해보세요",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#D4845A",
+  "background_color": "#F5F0EA",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
