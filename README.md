@@ -18,7 +18,7 @@ home_easy/
 
 ## 브랜치 전략
 
-> 직접 `main`에 push하지 않습니다. Issue → 브랜치 → PR 흐름으로 작업하세요.
+> 직접 `main`에 push하지 않습니다. Issue → 브랜치 → PR 흐름으로 작업해주세요! 또한 pr은 main이 아닌 develop브랜치에 merge하는 걸로 설정해주세요
 
 ```
 main                    # 최종 배포용 브랜치 (직접 push 금지)
