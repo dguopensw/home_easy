@@ -73,7 +73,7 @@ POST /furniture/crawl/test             # 크롤링 단독 테스트용
   입력: { url: str }
   출력: { images: list[str], text: str, platform: str }
 ```
-
+//dkjfkldjfkldjfkdjfkjdkfj 변경사항
 ### routers/furniture.py
 ```python
 GET /furniture/{job_id}
