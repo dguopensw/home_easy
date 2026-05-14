@@ -33,7 +33,7 @@
 
 | 규칙 | 내용 |
 |------|------|
-| BR-03-1 | SSE 연결은 LoadingPage 마운트 시 즉시 시작 |
+| BR-03-1 | SSE 연결은 job_id 수신 직후 시작하며, 연결 완료 후 LoadingPage로 이동 |
 | BR-03-2 | SSE `error` 이벤트 수신 시 에러 타입에 따라 메시지 분기 표시 |
 | BR-03-3 | SSE `complete` 이벤트 수신 시 `navigate('/PreviewPage', { state: { glbUrl, dimensions } })` |
 | BR-03-4 | LoadingPage 언마운트 시 SSE 연결 반드시 종료 (EventSource.close()) |

@@ -10,29 +10,28 @@
 |  React PWA       | ------------------> |  FastAPI         |
 |  (Vercel)        |                     |  (AWS EC2)       |
 |                  |                     |                  |
-|  - React Router   |                     |  - crawling.py   |
+|  - React Router  |                     |  - crawling.py   |
 |  - 7개 Page      |                     |  - generation.py |
-|  - Unity iframe  |                     |  - model.py      |
-+------------------+                     +--------+---------+
-        |                                         |
-        | SendMessage /                   RunPod  |  boto3
-        | CustomEvent                     API     |
-        v                                         v
-+------------------+                     +--------+---------+
-|  Unity WebGL     |                     |  RunPod          |
-|  (AR 씬)         |                     |  Serverless      |
-|                  |                     |                  |
-|  - ARController  |                     |  - ImageSelector |
-|  - ModelLoader   |                     |  - Preprocessor  |
-|  - Placement     |                     |  - DimEstimator  |
-|  - JSBridge      |                     |  - ModelGenerator|
-+------------------+                     +--------+---------+
-                                                   |
-                                                   v
-                                          +------------------+
-                                          |  AWS S3          |
-                                          |  (.glb 저장)     |
-                                          +------------------+
+|  - Unity iframe  |                     |  - ImageSelector |
++------------------+                     |  - Preprocessor  |
+        |                                |  - DimEstimator  |
+        | SendMessage /                  +--------+---------+
+        | CustomEvent                        |         |
+        v                               RunPod|    SQLAlchemy
++------------------+                    API  |         |
+|  Unity WebGL     |                         v         v
+|  (AR 씬)         |                +----------+  +----------+
+|                  |                |  RunPod  |  | PostgreSQL|
+|  - ARController  |                | (TRELLIS)|  | (job 결과)|
+|  - ModelLoader   |                +----+-----+  +----------+
+|  - Placement     |                     |
+|  - JSBridge      |                  boto3
++------------------+                     |
+                                         v
+                                  +------------------+
+                                  |  AWS S3          |
+                                  |  (.glb 저장)     |
+                                  +------------------+
 ```
 
 ---
@@ -55,10 +54,12 @@
 | Unit | 기술 | 배포 |
 |------|------|------|
 | Frontend | React + Vite + TypeScript + Tailwind CSS | Vercel |
-| Backend API | Python + FastAPI + sse-starlette | AWS EC2 |
-| AI Pipeline | Python + TRELLIS + SAM + Metric3D + GPT-4o | RunPod Serverless |
+| Backend API | Python + FastAPI + sse-starlette + SQLAlchemy | AWS EC2 |
+| Backend AI 처리 | GPT-4o Vision + DINO + SAM + LaMa + Metric3D | AWS EC2 (FastAPI 내) |
+| AI Pipeline | Python + TRELLIS | RunPod Serverless |
 | Unity AR | Unity WebGL | Frontend 번들에 포함 |
 | 파일 저장 | AWS S3 | - |
+| DB | PostgreSQL (RDS) | AWS RDS |
 
 ---
 

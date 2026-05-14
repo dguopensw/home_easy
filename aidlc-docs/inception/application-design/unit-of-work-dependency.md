@@ -29,9 +29,9 @@
 ### Unit 2 → Unit 3 (RunPod REST API)
 | 호출 | 방식 | 내용 |
 |------|------|------|
-| 작업 시작 | RunPod API | 이미지 목록, 텍스트 전달 |
-| 상태 폴링 | RunPod API | 2초마다 상태 확인 |
-| 결과 수신 | RunPod API | glb_url, dimensions 반환 |
+| 작업 시작 | RunPod API | 전처리된 이미지 전달 (크롤링·이미지선정·전처리·치수추정은 Unit 2에서 완료) |
+| 상태 폴링 | RunPod API | 2초마다 상태 확인 (runpod_job_id 사용, 메모리에만 저장) |
+| 결과 수신 | RunPod API | glb_url 반환 (dimensions는 Unit 2에서 이미 계산) |
 
 ### Unit 1 ↔ Unit 4 (JSBridge)
 | 방향 | 방식 | 내용 |
@@ -46,5 +46,9 @@
 | Unit | 외부 서비스 | 용도 |
 |------|-----------|------|
 | Unit 2 Backend | 당근마켓 / 번개장터 / 중고나라 | 크롤링 대상 |
-| Unit 3 AI Pipeline | OpenAI GPT-4o | 이미지 선정 |
+| Unit 2 Backend | OpenAI GPT-4o Vision | 최적 이미지 선정 |
+| Unit 2 Backend | Grounding DINO + SAM | 배경 제거 |
+| Unit 2 Backend | LaMa | 인페인팅 |
+| Unit 2 Backend | Metric3D / Depth Pro | 치수 추정 |
+| Unit 2 Backend | PostgreSQL (AWS RDS) | 완료 결과 저장 |
 | Unit 3 AI Pipeline | AWS S3 | .glb 파일 저장 |

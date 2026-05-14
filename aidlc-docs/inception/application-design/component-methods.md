@@ -80,11 +80,29 @@ GET /furniture/{job_id}
   출력: { glb_url: str, dimensions: { w: float, h: float, d: float } }
 ```
 
+### services/image_selector.py
+```python
+select_best_image(images: list[str]) -> str     # GPT-4o Vision으로 최적 이미지 선택
+```
+
+### services/preprocessor.py
+```python
+remove_background(image_path: str) -> str       # DINO + SAM 세그멘테이션
+inpaint(image_path: str, mask_path: str) -> str # LaMa 인페인팅
+```
+
+### services/dimension_estimator.py
+```python
+estimate_dimensions(image_path: str) -> dict    # Metric3D → { w, h, d } cm 단위
+```
+
 ### services/generation_service.py
 ```python
-start_job(crawl_result: dict) -> str            # RunPod 작업 시작, job_id 반환
-get_job_status(job_id: str) -> dict             # RunPod 작업 상태 조회
+create_job(url: str) -> str                     # UUID job_id 생성 후 즉시 반환
+run_pipeline(job_id: str, url: str) -> None     # 백그라운드에서 전체 파이프라인 실행
+poll_runpod(runpod_job_id: str) -> dict         # RunPod 상태 폴링 (메모리의 runpod_job_id 사용)
 stream_progress(job_id: str) -> AsyncGenerator  # SSE용 진행 상태 스트림
+save_result(job_id: str, result: dict) -> None  # 완료 결과 DB 저장
 ```
 
 ### services/crawling_service.py
@@ -104,24 +122,8 @@ parse_junggonara(url: str) -> CrawlResult
 ### handler.py
 ```python
 handler(job: dict) -> dict
-  입력: { url: str, images: list[str], text: str }
-  출력: { glb_url: str, dimensions: { w: float, h: float, d: float } }
-```
-
-### steps/image_selector.py
-```python
-select_best_image(images: list[str]) -> str     # GPT-4o Vision으로 최적 이미지 선택
-```
-
-### steps/preprocessor.py
-```python
-remove_background(image_path: str) -> str       # DINO + SAM 세그멘테이션
-inpaint(image_path: str, mask_path: str) -> str # LaMa 인페인팅
-```
-
-### steps/dimension_estimator.py
-```python
-estimate_dimensions(image_path: str) -> dict    # Metric3D → { w, h, d } cm 단위
+  입력: { image: str }   # 백엔드에서 전처리 완료된 이미지
+  출력: { glb_url: str }  # dimensions는 백엔드에서 이미 계산됨
 ```
 
 ### steps/model_generator.py
