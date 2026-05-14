@@ -67,7 +67,7 @@ const STEPS = [
 ```
 
 **주요 상호작용**:
-- 마운트 시 SSE 연결 시작
+- SSE는 UrlInputPage에서 job_id 수신 직후 이미 연결됨 (LoadingPage 진입 전 연결 완료)
 - progress 이벤트 → `setProgress`, `setCurrentStep`
 - complete 이벤트 → `navigate('/PreviewPage', { state: { glbUrl, dimensions } })`
 - error 이벤트 → `setError`

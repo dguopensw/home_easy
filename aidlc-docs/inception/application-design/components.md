@@ -71,28 +71,49 @@ ResultPage        sourceUrl로 "구매하러 가기" 외부 링크 표시
 ### services/crawling_service.py
 - **책임**: 당근마켓·번개장터·중고나라 게시글 파싱, 이미지·텍스트 수집
 
+### services/image_selector.py
+- **책임**: GPT-4o Vision으로 가구가 가장 잘 보이는 이미지 1장 선정
+
+### services/preprocessor.py
+- **책임**: Grounding DINO + SAM으로 가구 객체 추출, LaMa로 인페인팅
+
+### services/dimension_estimator.py
+- **책임**: Metric3D / Depth Pro로 단일 이미지에서 W·H·D 치수 추정 (cm)
+
 ### services/generation_service.py
-- **책임**: RunPod Serverless 작업 요청, 작업 상태 폴링, 결과 수신
+- **책임**: UUID로 job_id 생성, RunPod 작업 요청(runpod_job_id 메모리 보관), 상태 폴링, SSE 스트림 관리, 완료 결과 DB 저장
+
+### models/job.py
+- **책임**: Job DB 모델 정의 (job_id, source_url, dimensions, glb_url, created_at)
+
+### database.py
+- **책임**: DB 연결 설정 (engine, SessionLocal)
 
 
 ---
 
 ## Unit 3 — AI Pipeline (Python + RunPod Serverless)
 
+> RunPod Serverless는 FastAPI 같은 웹 프레임워크를 사용하지 않습니다.
+> AWS Lambda와 유사하게 `handler` 함수 하나가 진입점이며, RunPod 인프라가 HTTP 라우팅·큐잉·스케일링을 전담합니다.
+> 현재 프로젝트는 3D 생성 작업 하나만 처리하므로 단일 handler로 충분합니다.
+
+```python
+import runpod
+
+def handler(event):
+    input = event["input"]   # 백엔드가 보낸 전처리 이미지 등
+    # 3D 생성 처리...
+    return { "glb_url": "..." }
+
+runpod.serverless.start({ "handler": handler })
+```
+
 ### handler.py
-- **책임**: RunPod Serverless 진입점, 입력 수신 후 파이프라인 순차 실행
-
-### steps/image_selector.py
-- **책임**: GPT-4o Vision으로 가구 전체가 잘 보이는 최적 이미지 선정
-
-### steps/preprocessor.py
-- **책임**: Grounding DINO + SAM으로 가구 객체 추출, LaMa로 인페인팅
-
-### steps/dimension_estimator.py
-- **책임**: Metric3D / Depth Pro로 단일 이미지에서 W·H·D 치수 추정
+- **책임**: RunPod Serverless 진입점, 전처리된 이미지 수신 후 3D 생성 파이프라인 실행
 
 ### steps/model_generator.py
-- **책임**: TRELLIS로 전처리 이미지 → .glb 3D 모델 생성, S3 업로드
+- **책임**: TRELLIS로 전처리 이미지 → .glb 3D 모델 생성, S3 업로드 후 glb_url 반환
 
 ---
 

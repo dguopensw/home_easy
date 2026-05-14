@@ -13,16 +13,21 @@
     | 3) GET  /furniture/{job_id}
     v
 [FastAPI -- AWS EC2]
-    |                  |
-    | RunPod API        | boto3
-    v                  v
-[RunPod Serverless]  [AWS S3]
     |
-    | 내부 순차 실행
+    | 내부 순차 실행 (백그라운드)
     v
-[ImageSelector -> Preprocessor -> DimensionEstimator -> ModelGenerator]
-                                                               |
-                                                        .glb 파일 S3 업로드
+[CrawlingService -> ImageSelector -> Preprocessor -> DimensionEstimator]
+    |
+    | RunPod API (전처리된 이미지 전달)
+    v
+[RunPod Serverless]
+    |
+    v
+[ModelGenerator -> S3 업로드 -> glb_url 반환]
+    |
+    | boto3 (S3)
+    v
+[AWS S3]
 ```
 
 ---
@@ -40,9 +45,9 @@
 ### Backend API <-> RunPod
 | 통신 | 방식 | 내용 |
 |------|------|------|
-| 작업 시작 | RunPod REST API | 이미지 목록, 텍스트 전달 |
-| 상태 조회 | RunPod REST API | 2초마다 폴링 |
-| 결과 수신 | RunPod REST API | glb_url, dimensions 반환 |
+| 작업 시작 | RunPod REST API | 전처리된 이미지 전달 (크롤링·선정·전처리·치수추정은 백엔드 완료 후) |
+| 상태 조회 | RunPod REST API | 2초마다 폴링 (runpod_job_id 사용, 메모리에만 저장) |
+| 결과 수신 | RunPod REST API | glb_url만 반환 (dimensions는 백엔드에서 이미 계산) |
 
 ### React <-> Unity WebGL
 | 통신 방향 | 방식 | 예시 |

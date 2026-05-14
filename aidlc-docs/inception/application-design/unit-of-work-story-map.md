@@ -31,22 +31,26 @@
 
 | 스토리 | 제목 | 우선순위 |
 |--------|------|---------|
-| US-04 | 중고 가구 URL 입력 (API 엔드포인트) | 🔴 MVP |
+| US-04 | 중고 가구 URL 입력 (UUID job_id 즉시 반환, 비동기 처리 시작) | 🔴 MVP |
 | US-07 | 지원하지 않는 플랫폼 감지 | 🔴 MVP |
-| US-08 | AI 진행 상태 SSE 스트리밍 | 🔴 MVP |
-| US-09 | 크롤링 실패 에러 반환 | 🔴 MVP |
-| US-10 | 3D 생성 실패 에러 반환 | 🔴 MVP |
+| US-08 | AI 진행 상태 SSE 스트리밍 (크롤링 ~ 치수 추정 구간 포함) | 🔴 MVP |
+| US-08 | 최적 이미지 선정 (GPT-4o Vision) | 🔴 MVP |
+| US-08 | 이미지 전처리 (DINO+SAM 배경 제거, LaMa 인페인팅) | 🔴 MVP |
+| US-12 | 가구 치수 추정 (Metric3D) | 🔴 MVP |
+| US-09 | 크롤링 / 전처리 실패 SSE error 이벤트 반환 | 🔴 MVP |
+| US-10 | 3D 생성 실패 SSE error 이벤트 반환 | 🔴 MVP |
+| —     | DB 구축 (PostgreSQL 연결 설정, Job 테이블 생성) | 🔴 MVP |
+| —     | 완료 결과 DB 저장 (job_id, source_url, dimensions, glb_url) | 🔴 MVP |
 
 ---
 
-## Unit 3 — AI Pipeline
+## Unit 3 — AI Pipeline (RunPod)
 
 | 스토리 | 제목 | 우선순위 |
 |--------|------|---------|
-| US-08 | AI 처리 단계별 진행 (이미지 선정 → 전처리 → 치수 추정 → 3D 생성) | 🔴 MVP |
-| US-09 | 크롤링 실패 처리 | 🔴 MVP |
-| US-10 | 3D 생성 실패 처리 | 🔴 MVP |
-| US-12 | 가구 치수 추정 (Metric3D) | 🔴 MVP |
+| US-08 | 전처리된 이미지로 3D 모델 생성 (TRELLIS) | 🔴 MVP |
+| US-08 | 생성된 .glb 파일 S3 업로드 후 glb_url 반환 | 🔴 MVP |
+| US-10 | 3D 생성 실패 처리 (RunPod handler 내 에러 반환) | 🔴 MVP |
 
 ---
 
@@ -66,8 +70,9 @@
 | Unit | MVP 필수 | MVP UI만 | Post-MVP |
 |------|---------|---------|---------|
 | Unit 1 Frontend | 13개 | 1개 | 3개 |
-| Unit 2 Backend | 5개 | — | — |
-| Unit 3 AI Pipeline | 4개 | — | — |
+| Unit 2 Backend | 10개 | — | — |
+| Unit 3 AI Pipeline | 3개 | — | — |
 | Unit 4 Unity AR | 4개 | — | — |
 
 > 일부 스토리(US-04, US-08, US-09, US-10, US-12)는 여러 Unit에 걸쳐 구현됩니다.
+> Unit 2는 크롤링·AI 전처리·치수 추정·DB 구축까지 포함하며, Unit 3(RunPod)은 3D 생성과 S3 업로드만 담당합니다.

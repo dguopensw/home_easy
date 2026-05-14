@@ -73,21 +73,27 @@ frontend/
 | 항목 | 내용 |
 |------|------|
 | **경로** | `backend/` |
-| **기술 스택** | Python + FastAPI |
+| **기술 스택** | Python + FastAPI + SQLAlchemy |
 | **배포** | AWS EC2 |
-| **책임** | 크롤링, RunPod 작업 관리, SSE 스트리밍, .glb URL 반환 |
+| **책임** | 크롤링, 이미지 선정, 전처리, 치수 추정, UUID job_id 비동기 처리, RunPod 작업 관리, SSE 스트리밍, 완료 결과 DB 저장 |
 
 ### 내부 구조
 ```
 backend/
-├── main.py
+├── main.py              ← FastAPI 앱 초기화, create_all()로 테이블 생성
+├── database.py          ← DB 연결 설정 (engine, SessionLocal)
 ├── routers/
-│   ├── generation.py   ← /furniture/gen/start, /furniture/gen/status/{id}
-│   ├── crawling.py     ← /furniture/crawl/test
-│   └── furniture.py    ← /furniture/{id}
-└── services/
-    ├── generation_service.py
-    └── crawling_service.py
+│   ├── generation.py    ← /furniture/gen/start, /furniture/gen/status/{id}
+│   ├── crawling.py      ← /furniture/crawl/test
+│   └── furniture.py     ← /furniture/{id}
+├── services/
+│   ├── crawling_service.py      ← 플랫폼별 크롤링
+│   ├── image_selector.py        ← GPT-4o Vision 이미지 선정
+│   ├── preprocessor.py          ← DINO+SAM 배경 제거, LaMa 인페인팅
+│   ├── dimension_estimator.py   ← Metric3D 치수 추정
+│   └── generation_service.py    ← UUID job_id 생성, RunPod 요청/폴링, SSE 스트림, DB 저장
+└── models/
+    └── job.py           ← Job DB 모델 (job_id, source_url, dimensions, glb_url, created_at)
 ```
 
 ---
@@ -97,19 +103,16 @@ backend/
 | 항목 | 내용 |
 |------|------|
 | **경로** | `ai-pipeline/` |
-| **기술 스택** | Python + RunPod Serverless |
+| **기술 스택** | Python + RunPod Serverless SDK |
 | **배포** | RunPod (GPU 서버리스) |
-| **책임** | 이미지 선정 → 전처리 → 치수 추정 → 3D 모델 생성 → S3 업로드 |
+| **책임** | 전처리된 이미지로 3D 모델 생성 (TRELLIS) → S3 업로드 → glb_url 반환 |
 
 ### 내부 구조
 ```
 ai-pipeline/
-├── handler.py          ← RunPod 진입점
+├── handler.py          ← RunPod 진입점 (단일 handler 함수, FastAPI 없음)
 └── steps/
-    ├── image_selector.py    ← GPT-4o Vision
-    ├── preprocessor.py      ← DINO + SAM + LaMa
-    ├── dimension_estimator.py ← Metric3D
-    └── model_generator.py   ← TRELLIS + S3 업로드
+    └── model_generator.py   ← TRELLIS 3D 생성 + S3 업로드
 ```
 
 ---
