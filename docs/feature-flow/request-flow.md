@@ -13,23 +13,52 @@
   URL 입력
      |
      v
-[프론트엔드 - React]
-  POST /furniture/gen/start   →   [백엔드 - FastAPI]
-                                     크롤링 (이미지/텍스트 수집)
-                                     RunPod 작업 시작
-                              ←   job_id 반환
-  SSE 연결 시작               →   [백엔드]
-                                     2초마다 RunPod 상태 폴링
-                              ←   진행 상태 실시간 전송 (SSE)
+[프론트엔드]                          [백엔드]                        [RunPod]          [DB]      [S3]
+  URL 전송 (POST /furniture/gen/start)
+  ─────────────────────────────────►
+                                      job_id 생성 (UUID)
+                                      job_id 즉시 반환
+  ◄─────────────────────────────────
+                                      [백그라운드 처리 시작]
+                                      크롤링 수행
+                                      이미지 선정 (GPT-4o)
+                                      배경 제거 / 인페인팅
+                                      치수 추정 (Metric3D)
+                                      작업 요청 전송 (전처리 이미지)
+                                      ────────────────────────────►
+                                                                    runpod_job_id 반환 (DB 저장 x)
+                                      ◄────────────────────────────
 
-                                  [RunPod - AI Pipeline]
-                                     1. 최적 이미지 선정
-                                     2. 배경 제거 / 인페인팅
-                                     3. 치수 추정
-                                     4. 3D 모델(.glb) 생성
-                                     5. S3 업로드
+  SSE 연결 요청 (GET /furniture/gen/status/{job_id})
+  ─────────────────────────────────►
+  LoadingPage로 이동
+  ┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │ LoadingPage                                                                                      │
+  │                                     진행 이벤트 전송 (크롤링 ~ 전처리 구간)                         │
+  │ ◄─────────────────────────────────                                                               │
+  │                                     상태 조회 요청 (2초마다 폴링, runpod_job_id 사용)               │
+  │                                     ────────────────────────────►                                │
+  │                                                                   { status: "IN_PROGRESS" } 반환 │
+  │                                     ◄────────────────────────────                                │
+  │                                     진행 이벤트 전송 (RunPod 구간)                                 │
+  │ ◄─────────────────────────────────                                                               │
+  │       (반복)                                                                                     │
+  └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 
-                              ←   complete 이벤트 (glb_url, dimensions)
+                                      상태 조회 요청
+                                      ────────────────────────────►
+                                                                    .glb 저장
+                                                                    ─────────────────────────────────────►
+                                                                    { status: "COMPLETED", glb_url } 반환
+                                      ◄────────────────────────────
+
+                                      완료 결과 저장 (job_id, source_url, dimensions, glb_url)
+                                      ──────────────────────────────────────────────────────►
+
+                                      
+                                      complete 이벤트 전송 (glb_url, dimensions)
+  ◄─────────────────────────────────
+
   3D 모델 화면으로 이동
 ```
 
@@ -52,21 +81,40 @@ Body: { "url": "https://www.daangn.com/..." }
 
 ---
 
-## STEP 2. 백엔드가 크롤링을 시작한다
+## STEP 2. 백엔드가 job_id를 즉시 반환하고 백그라운드에서 처리를 시작한다
 
-- 담당 파일: `routers/generation.py`, `services/crawling_service.py`
+- 담당 파일: `routers/generation.py`, `services/crawling_service.py`, `services/image_selector.py`, `services/preprocessor.py`, `services/dimension_estimator.py`
 
 **백엔드가 하는 일:**
-1. URL을 받아 플랫폼을 자동 감지 (당근 / 번개장터 / 중고나라)
-2. 해당 플랫폼 파싱 로직으로 게시글에서 **가구 이미지 목록**과 **텍스트 설명**을 수집
-3. 수집한 데이터를 RunPod에 보내 AI 작업을 시작
-4. RunPod으로부터 `job_id`를 받아 프론트엔드에 반환
+1. UUID로 `job_id`를 직접 생성
+2. `job_id`를 프론트엔드에 즉시 반환
+3. 백그라운드에서 아래 처리를 순차 실행:
+   1. URL로 플랫폼 자동 감지 후 **이미지 목록**과 **텍스트 설명** 수집
+   2. GPT-4o Vision으로 **가구가 가장 잘 보이는 사진 1장 선정**
+   3. 선정된 이미지에서 **배경 제거**(DINO+SAM) 및 **인페인팅**(LaMa)으로 전처리
+   4. Metric3D 모델로 가구의 **가로/세로/깊이(cm) 치수 추정**
+   5. 전처리된 이미지를 RunPod에 전송 → `runpod_job_id` 수신 (메모리에만 저장, DB저장x)
 
 ```
-응답: { "job_id": "abc123" }
+응답: { "job_id": "uuid-xxxx" }   // 전처리 완료를 기다리지 않고 즉시 반환
 ```
 
-> job_id는 이 작업의 고유 번호입니다. 이후 진행 상태를 조회할 때 사용합니다.
+> `job_id`는 백엔드가 UUID로 생성합니다. RunPod이 반환하는 `runpod_job_id`는 폴링 용도로만 메모리에 보관하며 DB에는 저장하지 않습니다.
+
+**DB에 저장되는 job 레코드 (MVP - 로그인 없음):**
+```
+{
+  job_id:     "uuid-xxxx",
+  source_url: "https://www.daangn.com/...",   // 사용자가 입력한 원본 게시글 URL
+  dimensions: { w: 80, h: 60, d: 40 },
+  glb_url:    "https://s3.../model.glb",
+  created_at: "2026-05-14T12:00:00Z"
+}
+```
+
+처리 중 상태는 SSE가 담당하므로 DB에는 **완료된 결과만** 저장합니다.
+
+> **[TODO] 로그인 추가 시**: `user_id` 컬럼(FK)을 추가하고 Alembic으로 마이그레이션하면 됩니다.
 
 ---
 
@@ -76,13 +124,16 @@ Body: { "url": "https://www.daangn.com/..." }
 - 담당 파일: `routers/generation.py`, `services/generation_service.py`
 
 **프론트엔드가 하는 일:**
-- `job_id`를 들고 LoadingPage로 이동
-- 즉시 SSE(Server-Sent Events) 연결을 엽니다
+1. 백엔드로부터 `job_id` 수신
+2. `job_id`로 SSE 연결 요청
+3. SSE 연결 완료 후 LoadingPage로 이동
 
 ```
 GET /furniture/gen/status/{job_id}
 (연결을 유지하며 서버로부터 실시간 이벤트를 수신)
 ```
+
+> SSE 연결을 먼저 열고 LoadingPage로 이동하기 때문에, 페이지 전환 중에 발생하는 진행 이벤트를 놓치지 않습니다.
 
 ### SSE가 무엇이고 왜 필요한가?
 
@@ -102,7 +153,7 @@ GET /furniture/gen/status/{job_id}
 
 **SSE가 사용되는 구체적인 위치:**
 
-- `LoadingPage`가 마운트될 때 `EventSource` 객체를 생성해 연결을 엽니다
+- `job_id` 수신 직후 `EventSource` 객체를 생성해 SSE 연결을 열고, 연결 완료 후 LoadingPage로 이동합니다
 - 백엔드에서 RunPod 상태가 바뀔 때마다 이벤트를 전송하고, LoadingPage는 이를 받아 진행 바와 단계 UI를 업데이트합니다
 - 완료 또는 에러 이벤트를 받으면 연결을 닫고 다음 화면으로 이동합니다
 - LoadingPage에서 벗어날 때(언마운트)도 반드시 연결을 닫아 리소스를 정리합니다
@@ -122,6 +173,11 @@ LoadingPage 마운트
 - 2초마다 RunPod에 작업 상태를 폴링(조회)
 - 단계가 바뀔 때마다 프론트엔드에 진행 이벤트를 전송
 
+> **[TODO] 웹훅 방식으로 전환 고려**  
+> 현재는 폴링 방식을 사용하지만, 배포 후 웹훅으로 전환할 수 있습니다.  
+> 전환 시 `generation_service.py`의 폴링 루프를 제거하고 `/webhook` 엔드포인트를 추가하면 됩니다. SSE 전송 로직은 그대로 재사용 가능합니다.  
+> (로컬 개발 환경에서는 RunPod이 localhost에 콜백을 보낼 수 없으므로 ngrok 등 터널링 툴이 필요합니다.)
+
 ```
 // 진행 중 이벤트
 { "step": "전처리 중", "progress": 15 }
@@ -140,15 +196,12 @@ LoadingPage 마운트
 - 담당 파일: `handler.py`, `steps/` 디렉토리
 - 실행 위치: RunPod Serverless (GPU 서버, 백엔드와 별도)
 
-**AI 파이프라인 5단계:**
+**AI 파이프라인 2단계:**
 
 | 단계 | 파일 | 하는 일 | 진행률 |
 |------|------|---------|--------|
-| 1. 이미지 선정 | `image_selector.py` | GPT-4o Vision으로 게시글 이미지 중 가구가 가장 잘 보이는 사진 1장 선택 | 5% → 10% |
-| 2. 전처리 | `preprocessor.py` | 배경 제거(DINO+SAM), 빈 배경 채우기(LaMa 인페인팅) | 10% → 20% |
-| 3. 치수 추정 | `dimension_estimator.py` | Metric3D 모델로 가구의 가로/세로/깊이(cm) 추정 | 20% → 30% |
-| 4. 3D 모델 생성 | `model_generator.py` | TRELLIS로 이미지 → .glb 3D 파일 생성 (가장 오래 걸림) | 30% → 95% |
-| 5. S3 업로드 | `model_generator.py` | 생성된 .glb 파일을 AWS S3에 저장하고 URL 반환 | 95% → 100% |
+| 1. 3D 모델 생성 | `model_generator.py` | TRELLIS로 전처리된 이미지 → .glb 3D 파일 생성 (가장 오래 걸림) | 30% → 95% |
+| 2. S3 업로드 | `model_generator.py` | 생성된 .glb 파일을 AWS S3에 저장하고 URL 반환 | 95% → 100% |
 
 > TRELLIS 3D 생성이 전체 시간의 약 65%를 차지합니다 (약 120초 소요).
 
@@ -157,10 +210,13 @@ LoadingPage 마운트
 ## STEP 5. 백엔드가 완료 이벤트를 프론트엔드에 전송한다
 
 - RunPod 작업이 완료되면 백엔드가 폴링으로 이를 감지
-- SSE로 `complete` 이벤트를 프론트엔드에 전송
+- RunPod 응답에서 `glb_url` 수신
+- DB에 완료 결과 저장 (`job_id`, `source_url`, `dimensions`, `glb_url`, `created_at`)
+- STEP 2에서 미리 추정해둔 `dimensions`와 합쳐 SSE로 `complete` 이벤트를 프론트엔드에 전송
 
 ```
 { "status": "complete", "glb_url": "https://s3.amazonaws.com/.../model.glb", "dimensions": { "w": 80, "h": 60, "d": 40 } }
+//                       ^--- RunPod에서 수신                                  ^--- 백엔드가 STEP 2에서 이미 계산
 ```
 
 ---
@@ -180,12 +236,12 @@ LoadingPage 마운트
 ## 전체 진행률 타임라인
 
 ```
-  0%   크롤링 시작 (FastAPI)                      ~10초
-  5%   이미지 선정 중 (GPT-4o)                    ~10초
- 10%   전처리 중 (배경 제거 / 인페인팅)            ~20초
- 20%   치수 추정 중 (Metric3D)                    ~15초
- 30%   3D 모델 생성 중 (TRELLIS) ← 가장 오래 걸림  ~120초
- 95%   S3 업로드 중                               ~5초
+  0%   크롤링 시작 (FastAPI)                              ~10초
+  5%   이미지 선정 중 (FastAPI / GPT-4o)                  ~10초
+ 10%   전처리 중 (FastAPI / 배경 제거 · 인페인팅)          ~20초
+ 20%   치수 추정 중 (FastAPI / Metric3D)                  ~15초
+ 30%   3D 모델 생성 중 (RunPod / TRELLIS) ← 가장 오래 걸림 ~120초
+ 95%   S3 업로드 중 (RunPod)                              ~5초
 100%   완료 → ModelPreviewPage 이동
 ```
 
@@ -196,9 +252,10 @@ LoadingPage 마운트
 | 에러 발생 위치 | 처리 방식 |
 |--------------|---------|
 | URL 입력 검증 실패 | 프론트엔드에서 즉시 차단, 에러 메시지 표시 |
-| 크롤링 실패 (게시글 삭제 등) | 백엔드가 에러 응답 → 프론트 에러 토스트 |
-| RunPod 작업 실패 | SSE `error` 이벤트 전송 → LoadingPage 에러 UI 표시 |
-| RunPod 타임아웃 | SSE `error` 이벤트 전송 → LoadingPage 에러 UI 표시 |
+| 크롤링 실패 (게시글 삭제 등) | SSE `error` 이벤트 전송 → LoadingPage 에러 UI 표시 (DB 저장 없음) |
+| 백엔드 전처리 실패 (이미지 선정 / 배경 제거 / 치수 추정) | SSE `error` 이벤트 전송 → LoadingPage 에러 UI 표시 (DB 저장 없음) |
+| RunPod 작업 실패 | SSE `error` 이벤트 전송 → LoadingPage 에러 UI 표시 (DB 저장 없음) |
+| RunPod 타임아웃 | SSE `error` 이벤트 전송 → LoadingPage 에러 UI 표시 (DB 저장 없음) |
 
 ---
 
@@ -216,13 +273,41 @@ backend/
     generation.py          # POST /furniture/gen/start, GET /furniture/gen/status/{job_id}
   services/
     crawling_service.py    # 플랫폼별 크롤링
+    image_selector.py      # 최적 이미지 선정 (GPT-4o)
+    preprocessor.py        # 배경 제거 / 인페인팅 (DINO+SAM, LaMa)
+    dimension_estimator.py # 치수 추정 (Metric3D)
     generation_service.py  # RunPod 작업 시작 / 상태 폴링 / SSE 스트림
+  models/
+    job.py                 # Job DB 모델 (job_id, source_url, dimensions, glb_url, created_at)
+  database.py              # DB 연결 설정 (engine, SessionLocal)
+  main.py                  # 서버 시작 시 Base.metadata.create_all(engine) 호출 → 테이블 자동 생성
 
 ai-pipeline/ (RunPod)
   handler.py               # 파이프라인 진입점
   steps/
-    image_selector.py      # 최적 이미지 선정
-    preprocessor.py        # 배경 제거 / 인페인팅
-    dimension_estimator.py # 치수 추정
     model_generator.py     # 3D 모델 생성 + S3 업로드
+```
+
+---
+
+## DB 테이블 생성 방식
+
+`job.py`에 정의한 모델을 SQLAlchemy가 SQL로 변환해 DB 서버에 실행합니다.
+
+```
+job.py (Python 클래스)
+    ↓ SQLAlchemy 변환
+CREATE TABLE jobs (...) (SQL)
+    ↓ DB 서버에 실행
+실제 테이블 생성
+```
+
+**최초 배포 시**: `main.py`에서 `Base.metadata.create_all(engine)`을 호출해 테이블을 자동 생성합니다. 이미 테이블이 있으면 건드리지 않습니다.
+
+**이후 스키마 변경 시**: `create_all()`은 기존 테이블을 수정하지 않으므로 Alembic(마이그레이션 툴)을 사용합니다.
+
+```bash
+# 컬럼 추가 등 스키마 변경 후
+alembic revision --autogenerate -m "변경 내용 설명"
+alembic upgrade head  # 변경사항 DB에 반영
 ```
