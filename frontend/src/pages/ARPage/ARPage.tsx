@@ -42,7 +42,7 @@ export default function ARPage() {
   useEffect(() => {
     const handleUnityReady = () => {
       setUnityReady(true)
-      window.unityInstance?.SendMessage('ARController', 'LoadModel', glbUrl)
+      window.unityInstance?.SendMessage('ARManager', 'LoadModel', glbUrl)
     }
     const handlePlaneFound = () => setShowHint(false)
 
@@ -59,15 +59,15 @@ export default function ARPage() {
   }, [glbUrl, unityReady])
 
   const handleDuplicate = () => {
-    window.unityInstance?.SendMessage('PlacementManager', 'DuplicateSelected')
+    window.unityInstance?.SendMessage('ARManager', 'DuplicateSelected')
   }
 
   const handleDelete = () => {
-    window.unityInstance?.SendMessage('PlacementManager', 'DeleteSelected')
+    window.unityInstance?.SendMessage('ARManager', 'DeleteSelected')
   }
 
   const handleCapture = () => {
-    window.unityInstance?.SendMessage('ARController', 'CaptureScreen')
+    window.unityInstance?.SendMessage('ARManager', 'CaptureScreen')
     setToastVisible(true)
     setTimeout(() => {
       setToastVisible(false)
