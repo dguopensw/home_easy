@@ -1,0 +1,14 @@
+flask
+flask-cors
+fastapi
+uvicorn
+requests
+beautifulsoup4
+openai
+python-dotenv
+rembg
+onnxruntime
+Pillow
+opencv-python
+numpy
+torch

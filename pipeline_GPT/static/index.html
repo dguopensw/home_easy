@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>가구 치수 측정 파이프라인</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f0f2f5; color: #1a1a2e; min-height: 100vh;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 20px; }
+  h1 { font-size: 26px; text-align: center; margin-bottom: 6px; }
+  .subtitle { text-align: center; color: #666; margin-bottom: 28px; font-size: 14px; }
+
+  .card {
+    background: #fff; border-radius: 14px; padding: 24px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.06); margin-bottom: 20px;
+  }
+  .card h2 { font-size: 16px; margin-bottom: 16px; color: #333; }
+
+  .input-row { display: flex; gap: 10px; margin-bottom: 14px; }
+  .input-row input[type=text] {
+    flex: 1; padding: 12px 16px; border: 1.5px solid #d0d5dd; border-radius: 10px;
+    font-size: 15px; outline: none; transition: border-color .2s;
+  }
+  .input-row input:focus { border-color: #3b82f6; }
+
+  .options { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+  .options label { font-size: 14px; color: #555; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+  .options input[type=radio] { accent-color: #3b82f6; }
+
+  .btn {
+    padding: 12px 28px; background: #3b82f6; color: #fff; border: none;
+    border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: background .2s;
+  }
+  .btn:hover { background: #2563eb; }
+  .btn:disabled { background: #94a3b8; cursor: not-allowed; }
+  .btn-secondary { background: #64748b; }
+  .btn-secondary:hover { background: #475569; }
+
+  .progress { margin-top: 8px; }
+  .step {
+    display: flex; align-items: center; gap: 10px; padding: 8px 0;
+    font-size: 14px; color: #555; border-bottom: 1px solid #f0f0f0;
+  }
+  .step:last-child { border-bottom: none; }
+  .step .icon { width: 22px; text-align: center; font-size: 16px; }
+  .step.done .icon { color: #22c55e; }
+  .step.running .icon { color: #3b82f6; }
+  .step.failed .icon { color: #ef4444; }
+
+  .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  @media (max-width: 640px) { .results-grid { grid-template-columns: 1fr; } }
+
+  .image-card { text-align: center; }
+  .image-card img {
+    max-width: 100%; max-height: 320px; border-radius: 10px;
+    object-fit: contain; background: #f8f8f8; border: 1px solid #eee;
+  }
+  .image-card .label { font-size: 12px; color: #888; margin-top: 6px; }
+
+  .dim-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  .dim-table th, .dim-table td {
+    padding: 10px 14px; text-align: left; border-bottom: 1px solid #f0f0f0;
+  }
+  .dim-table th { font-size: 13px; color: #888; font-weight: 500; }
+  .dim-table td { font-size: 18px; font-weight: 600; color: #1a1a2e; }
+  .dim-table .unit { font-size: 13px; font-weight: 400; color: #888; }
+
+  .confidence { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .confidence.high { background: #dcfce7; color: #166534; }
+  .confidence.medium { background: #fef9c3; color: #854d0e; }
+  .confidence.low { background: #fecaca; color: #991b1b; }
+
+  .error-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 14px; color: #991b1b; font-size: 14px; }
+
+  .scraped-images { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .scraped-images img {
+    width: 80px; height: 80px; object-fit: cover; border-radius: 8px;
+    cursor: pointer; border: 3px solid transparent; transition: border-color .2s;
+  }
+  .scraped-images img.selected { border-color: #3b82f6; }
+  .scraped-images img:hover { border-color: #93c5fd; }
+
+  .hidden { display: none; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #3b82f6; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .download-row { margin-top: 16px; display: flex; gap: 10px; justify-content: center; }
+  .download-row a {
+    padding: 8px 18px; background: #10b981; color: #fff; border-radius: 8px;
+    text-decoration: none; font-size: 13px; font-weight: 600;
+  }
+  .download-row a:hover { background: #059669; }
+
+  .reasoning { font-size: 13px; color: #666; margin-top: 10px; line-height: 1.5; padding: 10px; background: #f8f9fa; border-radius: 8px; }
+  .warning-box { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 10px; line-height: 1.5; }
+  .warning-box.yellow { background: #fef9c3; border: 1px solid #fde68a; color: #854d0e; }
+  .warning-box.red { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+  .warning-box.green { background: #dcfce7; border: 1px solid #bbf7d0; color: #166534; }
+  .image-label-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-top: 4px; }
+  .tag-measurement { background: #dbeafe; color: #1e40af; }
+  .tag-display { background: #fef3c7; color: #92400e; }
+
+  .ratio-eval-card {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 16px; margin-top: 12px; font-size: 13px;
+  }
+  .ratio-eval-card h4 { font-size: 14px; margin-bottom: 10px; color: #334155; }
+  .ratio-eval-card .meta-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
+  .ratio-eval-card .meta-item { display: flex; align-items: center; gap: 4px; }
+  .ratio-eval-card table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .ratio-eval-card th, .ratio-eval-card td { padding: 5px 8px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 12px; }
+  .ratio-eval-card th { color: #64748b; font-weight: 500; }
+  .ratio-eval-card td { color: #1e293b; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .badge.pass { background: #dcfce7; color: #166534; }
+  .badge.warning { background: #fef9c3; color: #854d0e; }
+  .badge.fail { background: #fecaca; color: #991b1b; }
+  .score-bar { display: inline-block; height: 8px; border-radius: 4px; vertical-align: middle; }
+
+  .model-compare { margin-top: 20px; }
+  .model-compare h3 { font-size: 15px; margin-bottom: 12px; color: #334155; }
+  .model-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .model-card {
+    background: #fff; border: 2px solid #e2e8f0; border-radius: 10px; padding: 12px;
+    text-align: center; transition: border-color .2s, box-shadow .2s; cursor: default;
+  }
+  .model-card.selected { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
+  .model-card.auto-best { border-color: #10b981; }
+  .model-card img {
+    max-width: 100%; max-height: 200px; border-radius: 6px; object-fit: contain;
+    background: repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50%/16px 16px;
+  }
+  .model-card .model-name { font-weight: 600; font-size: 13px; margin: 8px 0 4px; }
+  .model-card .model-metrics { font-size: 11px; color: #64748b; text-align: left; }
+  .model-card .model-metrics div { padding: 2px 0; }
+  .model-card .select-btn {
+    margin-top: 8px; padding: 5px 14px; font-size: 12px; border-radius: 6px;
+    border: 1px solid #d0d5dd; background: #fff; cursor: pointer; transition: all .2s;
+  }
+  .model-card .select-btn:hover { background: #f0f7ff; border-color: #3b82f6; }
+  .model-card .select-btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+
+  /* 4-panel layout */
+  .four-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0; }
+  @media (max-width: 700px) { .four-panel { grid-template-columns: 1fr; } }
+  .panel-card {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 12px; text-align: center;
+  }
+  .panel-card .panel-title {
+    font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 8px;
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .panel-card img {
+    max-width: 100%; max-height: 240px; border-radius: 8px; object-fit: contain;
+    background: repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50%/16px 16px;
+  }
+  .panel-card .panel-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px;
+    font-weight: 600; margin-top: 6px;
+  }
+  .pb-measure { background: #dbeafe; color: #1e40af; }
+  .pb-preview { background: #fef3c7; color: #92400e; }
+  .pb-display-only { background: #fef2f2; color: #991b1b; }
+  .pb-unavailable { background: #f1f5f9; color: #475569; }
+
+  /* ratio eval panel */
+  .ratio-panel-content { text-align: left; font-size: 12px; }
+  .ratio-panel-content .r-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #e2e8f0; }
+  .ratio-panel-content .r-row:last-child { border-bottom: none; }
+  .ratio-panel-content .r-label { color: #64748b; }
+  .ratio-panel-content .r-val { font-weight: 600; color: #1e293b; }
+  .unavailable-box { padding: 20px; text-align: center; color: #94a3b8; font-size: 13px; }
+
+  /* final decision */
+  .final-decision {
+    background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 10px;
+    padding: 16px; margin-bottom: 16px;
+  }
+  .final-decision.has-warn { background: #fffbeb; border-color: #fde68a; }
+  .final-decision.has-error { background: #fef2f2; border-color: #fecaca; }
+  .final-decision h3 { font-size: 14px; font-weight: 700; margin-bottom: 10px; color: #15803d; }
+  .final-decision.has-warn h3 { color: #92400e; }
+  .final-decision.has-error h3 { color: #991b1b; }
+  .fd-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  @media (max-width: 600px) { .fd-grid { grid-template-columns: 1fr 1fr; } }
+  .fd-item { text-align: center; padding: 8px; background: rgba(255,255,255,.7); border-radius: 8px; }
+  .fd-item .fd-label { font-size: 11px; color: #64748b; margin-bottom: 4px; }
+  .fd-item .fd-val { font-size: 13px; font-weight: 700; }
+  .fd-ok { color: #16a34a; }
+  .fd-no { color: #dc2626; }
+  .fd-warn { color: #ca8a04; }
+
+  /* debug section */
+  .debug-toggle {
+    background: none; border: 1px solid #d0d5dd; border-radius: 8px;
+    padding: 8px 16px; font-size: 13px; color: #64748b; cursor: pointer;
+    width: 100%; text-align: left; margin-top: 16px; transition: background .2s;
+  }
+  .debug-toggle:hover { background: #f8f9fa; }
+  .debug-section { margin-top: 12px; padding: 16px; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>가구 치수 측정 파이프라인</h1>
+  <p class="subtitle">당근마켓 / 중고나라 URL을 입력하면 가구 치수를 자동으로 측정합니다</p>
+
+  <!-- Input Card -->
+  <div class="card">
+    <h2>1. URL 입력</h2>
+    <div class="input-row">
+      <input type="text" id="url-input" placeholder="https://www.daangn.com/articles/..." />
+      <button class="btn btn-secondary" id="scrape-btn" onclick="doScrape()">미리보기</button>
+    </div>
+
+    <div id="scrape-result" class="hidden">
+      <p id="scrape-title" style="font-weight:600; margin-bottom:4px;"></p>
+      <p id="scrape-price" style="font-size:14px; color:#666; margin-bottom:8px;"></p>
+      <p style="font-size:13px; color:#888;">이미지를 클릭하여 대표 이미지를 선택하세요:</p>
+      <div id="scrape-images" class="scraped-images"></div>
+    </div>
+
+    <div style="margin-top:20px; font-size:13px; color:#888; padding:10px; background:#f8f9fa; border-radius:8px;">
+      <b>처리 방식:</b> Multi-prompt SAM (치수 측정 + 원본 누끼) + GPT Image Edit (고품질 누끼, 검증 후 제공)
+    </div>
+
+    <button class="btn" id="process-btn" onclick="doProcess()" style="margin-top:16px;">치수 측정 시작</button>
+  </div>
+
+  <!-- Progress Card -->
+  <div class="card hidden" id="progress-card">
+    <h2>진행 상황</h2>
+    <div class="progress" id="progress-steps">
+      <div class="step" id="step-scrape"><span class="icon">&#9675;</span> URL 스크래핑</div>
+      <div class="step" id="step-select"><span class="icon">&#9675;</span> 대표 이미지 선택</div>
+      <div class="step" id="step-measurement"><span class="icon">&#9675;</span> SAM 세그멘테이션 (치수 측정용)</div>
+      <div class="step" id="step-faithful"><span class="icon">&#9675;</span> SAM 누끼 생성 (원본 픽셀 추출)</div>
+      <div class="step" id="step-obstacle"><span class="icon">&#9675;</span> GPT Vision 장애물 판단</div>
+      <div class="step" id="step-gpt"><span class="icon">&#9675;</span> 표면 장애물 제거 (필요 시)</div>
+      <div class="step" id="step-measure"><span class="icon">&#9675;</span> 치수 측정 (GPT Vision)</div>
+    </div>
+  </div>
+
+  <!-- Error -->
+  <div class="hidden" id="error-card">
+    <div class="error-box" id="error-msg"></div>
+  </div>
+
+  <!-- Results Card -->
+  <div class="card hidden" id="results-card">
+    <h2>측정 결과</h2>
+    <div id="result-title" style="font-weight:600; font-size:16px; margin-bottom:4px;"></div>
+    <div id="result-price" style="font-size:14px; color:#666; margin-bottom:6px;"></div>
+    <div id="result-furniture-type" style="font-size:14px; margin-bottom:12px;"></div>
+    <div id="obstacle-status-block" style="margin-bottom:12px;"></div>
+
+    <!-- Final Decision Block -->
+    <div id="final-decision-block" class="final-decision hidden">
+      <h3 id="fd-title">최종 판단</h3>
+      <div class="fd-grid">
+        <div class="fd-item">
+          <div class="fd-label">치수 측정 소스</div>
+          <div class="fd-val" id="fd-measure-src">-</div>
+        </div>
+        <div class="fd-item">
+          <div class="fd-label">미리보기 소스</div>
+          <div class="fd-val" id="fd-preview-src">-</div>
+        </div>
+        <div class="fd-item">
+          <div class="fd-label">치수 측정 가능</div>
+          <div class="fd-val" id="fd-can-measure">-</div>
+        </div>
+        <div class="fd-item">
+          <div class="fd-label">3D 생성 후보</div>
+          <div class="fd-val" id="fd-can-3d">-</div>
+        </div>
+        <div class="fd-item">
+          <div class="fd-label">AR 스케일 신뢰</div>
+          <div class="fd-val" id="fd-can-ar">-</div>
+        </div>
+      </div>
+      <div id="fd-warnings" style="margin-top:10px;"></div>
+    </div>
+
+    <!-- 4-Panel Grid -->
+    <div class="four-panel">
+      <!-- Panel 1: Original -->
+      <div class="panel-card">
+        <div class="panel-title">원본 이미지</div>
+        <img id="img-original" />
+        <div><span class="panel-badge pb-measure">Source</span></div>
+      </div>
+
+      <!-- Panel 2: Measurement -->
+      <div class="panel-card">
+        <div class="panel-title">치수 측정용</div>
+        <img id="img-measurement" />
+        <div>
+          <span class="panel-badge pb-measure">치수 측정 기준</span>
+          <span id="measurement-method-badge" class="panel-badge" style="margin-left:4px;"></span>
+        </div>
+        <div id="seg-info" style="font-size:11px; color:#64748b; margin-top:6px; text-align:left; line-height:1.4;"></div>
+      </div>
+
+      <!-- Panel 3: Preview / Obstacle handling -->
+      <div class="panel-card">
+        <div class="panel-title">장애물 처리 미리보기</div>
+        <img id="img-gpt-cutout" style="background: repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50%/16px 16px;" />
+        <div>
+          <span id="preview-source-badge" class="panel-badge pb-display-only">미리보기 전용</span>
+        </div>
+        <div id="gpt-cutout-note" style="font-size:11px; color:#64748b; margin-top:6px; text-align:left;"></div>
+      </div>
+
+      <!-- Panel 4: Ratio Evaluation -->
+      <div class="panel-card">
+        <div class="panel-title">비율 평가</div>
+        <div id="ratio-panel-content" class="ratio-panel-content"></div>
+      </div>
+    </div>
+
+    <!-- Dimension Table -->
+    <div style="margin-top:4px;">
+      <table class="dim-table">
+        <tr><th>항목</th><th>측정값</th></tr>
+        <tr><td>가로 (Width)</td><td id="dim-width">-</td></tr>
+        <tr><td>깊이 (Depth)</td><td id="dim-depth">-</td></tr>
+        <tr><td>높이 (Height)</td><td id="dim-height">-</td></tr>
+        <tr><td>신뢰도</td><td id="dim-confidence">-</td></tr>
+      </table>
+      <div class="reasoning" id="dim-reasoning"></div>
+    </div>
+
+    <div class="download-row" id="download-row"></div>
+
+    <!-- Collapsible Debug Section -->
+    <button class="debug-toggle" onclick="toggleDebug(this)">▶ 고급 디버그 보기</button>
+    <div id="debug-section" class="debug-section hidden">
+      <div id="geometry-warnings"></div>
+      <div id="model-compare-section" class="model-compare">
+        <h3>누끼 모델 비교</h3>
+        <div style="font-size:12px; color:#888; margin-bottom:8px;">
+          자동 선택: <b id="auto-selected-model">-</b> |
+          치수 측정 기준: <b id="measurement-mask-model">-</b>
+        </div>
+        <div class="model-grid" id="model-grid"></div>
+      </div>
+      <div style="margin-top:12px;">
+        <div id="ratio-overlay-card" class="image-card hidden" style="max-width:400px;">
+          <img id="img-ratio-overlay" />
+          <div class="label">비율 오버레이 (파란=기준, 빨간=장애물 제거 후 BiRefNet)</div>
+        </div>
+      </div>
+      <div style="margin-top:12px; font-size:12px;">
+        <b>ratio_eval raw:</b>
+        <pre id="ratio-eval-raw" style="background:#f1f5f9; padding:10px; border-radius:6px; overflow-x:auto; font-size:11px; margin-top:4px;"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let scrapedData = null;
+let selectedImageIndex = null;
+let _lastProcessData = null;
+
+function $(id) { return document.getElementById(id); }
+
+function colorDiff(val, warnThresh, failThresh) {
+  if (val === undefined || val === null) return '-';
+  const v = Number(val).toFixed(1);
+  if (val > failThresh) return `<span style="color:#dc2626;font-weight:600;">${v}%</span>`;
+  if (val > warnThresh) return `<span style="color:#ca8a04;font-weight:600;">${v}%</span>`;
+  return `<span style="color:#16a34a;">${v}%</span>`;
+}
+
+function toggleDebug(btn) {
+  const sec = $('debug-section');
+  const open = !sec.classList.contains('hidden');
+  sec.classList.toggle('hidden', open);
+  btn.textContent = (open ? '▶' : '▼') + ' 고급 디버그 보기';
+}
+
+function doScrape() {
+  const url = $('url-input').value.trim();
+  if (!url) return;
+  $('scrape-btn').disabled = true;
+  $('scrape-btn').textContent = '로딩...';
+  $('scrape-result').classList.add('hidden');
+
+  fetch('/api/scrape', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({url})
+  })
+  .then(r => r.json())
+  .then(data => {
+    $('scrape-btn').disabled = false;
+    $('scrape-btn').textContent = '미리보기';
+    if (data.error) { alert(data.error); return; }
+    scrapedData = data;
+    $('scrape-title').textContent = data.title || '(제목 없음)';
+    $('scrape-price').textContent = data.price || '';
+    const container = $('scrape-images');
+    container.innerHTML = '';
+    selectedImageIndex = 0;
+    (data.images || []).forEach((imgUrl, i) => {
+      const img = document.createElement('img');
+      img.src = imgUrl;
+      img.className = i === 0 ? 'selected' : '';
+      img.onclick = () => {
+        container.querySelectorAll('img').forEach(el => el.classList.remove('selected'));
+        img.classList.add('selected');
+        selectedImageIndex = i;
+      };
+      container.appendChild(img);
+    });
+    $('scrape-result').classList.remove('hidden');
+  })
+  .catch(e => {
+    $('scrape-btn').disabled = false;
+    $('scrape-btn').textContent = '미리보기';
+    alert('스크래핑 실패: ' + e.message);
+  });
+}
+
+function setStep(id, state) {
+  const el = $(id);
+  if (!el) return;
+  el.className = 'step ' + state;
+  const icon = el.querySelector('.icon');
+  if (state === 'done') icon.innerHTML = '&#10003;';
+  else if (state === 'running') icon.innerHTML = '<span class="spinner"></span>';
+  else if (state === 'failed') icon.innerHTML = '&#10007;';
+  else icon.innerHTML = '&#9675;';
+}
+
+function doProcess() {
+  const url = $('url-input').value.trim();
+  if (!url) { alert('URL을 입력해주세요.'); return; }
+
+  $('process-btn').disabled = true;
+  $('process-btn').textContent = '처리 중...';
+  $('progress-card').classList.remove('hidden');
+  $('results-card').classList.add('hidden');
+  $('error-card').classList.add('hidden');
+
+  ['step-scrape','step-select','step-measurement','step-faithful','step-obstacle','step-gpt','step-measure'].forEach(id => setStep(id, ''));
+  setStep('step-scrape', 'running');
+  setStep('step-select', 'running');
+
+  fetch('/api/process', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ url, selected_image_index: selectedImageIndex })
+  })
+  .then(r => r.json())
+  .then(data => {
+    $('process-btn').disabled = false;
+    $('process-btn').textContent = '치수 측정 시작';
+
+    const stepMap = {
+      scrape: 'step-scrape', select_image: 'step-select',
+      measurement_image: 'step-measurement', faithful_cutout: 'step-faithful',
+      obstacle_analysis: 'step-obstacle',
+      gpt_cutout: 'step-gpt', dimension_measurement: 'step-measure'
+    };
+    (data.steps || []).forEach(s => {
+      const el = stepMap[s.step];
+      if (el) setStep(el, s.status === 'done' ? 'done' : (s.status === 'skipped' ? 'done' : 'failed'));
+    });
+
+    if (data.error) {
+      $('error-msg').textContent = data.error;
+      $('error-card').classList.remove('hidden');
+      return;
+    }
+
+    renderResults(data);
+  })
+  .catch(e => {
+    $('process-btn').disabled = false;
+    $('process-btn').textContent = '치수 측정 시작';
+    $('error-msg').textContent = '요청 실패: ' + e.message;
+    $('error-card').classList.remove('hidden');
+  });
+}
+
+function renderResults(data) {
+  const jobId = data.job_id;
+  _lastProcessData = data;
+
+  $('result-title').textContent = data.title || '';
+  $('result-price').textContent = data.price || '';
+
+  // Furniture type
+  const fType = data.furniture_type || 'unknown';
+  const fConf = data.furniture_type_confidence || '';
+  const fWarn = data.furniture_type_warning || '';
+  const typeLabels = {chair:'의자',desk:'책상',table:'테이블',sofa:'소파',cabinet:'캐비닛',shelf:'선반',bed:'침대',dresser:'화장대',unknown:'미분류'};
+  const confColors = {high:'#16a34a',medium:'#ca8a04',low:'#dc2626'};
+  let ftHtml = `<span style="display:inline-block;padding:3px 10px;border-radius:6px;background:#e0e7ff;font-weight:600;color:#3730a3;">${typeLabels[fType]||fType}</span>`;
+  if (fConf) ftHtml += ` <span style="font-size:12px;color:${confColors[fConf]||'#888'};">(신뢰도: ${fConf})</span>`;
+  if (fWarn) ftHtml += `<div style="font-size:12px;color:#ca8a04;margin-top:2px;">${fWarn}</div>`;
+  $('result-furniture-type').innerHTML = ftHtml;
+
+  // Obstacle judgement
+  const obstacle = data.obstacle_analysis || {};
+  const obstacleStatus = obstacle.obstacle_status || data.obstacle_status || 'background_only';
+  const obstacleLabels = {
+    none: '장애물 없음',
+    background_only: '배경만 복잡함',
+    surface_obstacle: '표면 장애물 제거 필요',
+    structural_occlusion: '구조 가림으로 신뢰도 낮음',
+  };
+  const obstacleClass = obstacleStatus === 'structural_occlusion'
+    ? 'red'
+    : (obstacleStatus === 'surface_obstacle' ? 'yellow' : 'green');
+  const obstacleNames = (obstacle.obstacles || [])
+    .filter(o => o.removal_needed)
+    .map(o => `${o.name}${o.location ? ` (${o.location})` : ''}`)
+    .join(', ');
+  $('obstacle-status-block').innerHTML = `
+    <div class="warning-box ${obstacleClass}" style="margin-bottom:0;">
+      <b>장애물 판단:</b> ${obstacleLabels[obstacleStatus] || obstacleStatus}
+      <span style="font-size:12px;"> · GPT Vision · 신뢰도 ${obstacle.confidence || '-'}</span>
+      ${obstacleNames ? `<div style="margin-top:4px;">대상: ${obstacleNames}</div>` : ''}
+      ${obstacle.reason ? `<div style="margin-top:4px;font-size:12px;">${obstacle.reason}</div>` : ''}
+    </div>
+  `;
+
+  // ── Final Decision ──
+  const fd = data.final_decision || {};
+  if (fd.measurement_source) {
+    const fdBlock = $('final-decision-block');
+    fdBlock.classList.remove('hidden');
+    const fdWarns = fd.warnings || [];
+    const hasError = fdWarns.some(w => w.includes('failed') || w.includes('error'));
+    const hasWarn = fdWarns.length > 0 && !hasError;
+    fdBlock.className = 'final-decision' + (hasError ? ' has-error' : hasWarn ? ' has-warn' : '');
+    $('fd-title').textContent = hasError ? '⚠ 측정 결과 주의 필요' : (hasWarn ? '주의사항 있음' : '측정 완료');
+
+    const nameLabels = {
+      dino_sam:'DINO + SAM',
+      dino_birefnet:'DINO + BiRefNet',
+      sam:'SAM',
+      birefnet:'BiRefNet 단독',
+      rmbg:'RMBG-1.4',
+      gpt_inpaint_birefnet:'GPT 제거 + BiRefNet'
+    };
+    $('fd-measure-src').textContent = nameLabels[fd.measurement_source] || fd.measurement_source;
+    $('fd-preview-src').textContent = nameLabels[fd.preview_source] || fd.preview_source;
+
+    function fdBool(v) {
+      return v ? '<span class="fd-ok">✓ 가능</span>' : '<span class="fd-no">✗ 불가</span>';
+    }
+    $('fd-can-measure').innerHTML = fdBool(fd.can_use_for_dimension);
+    $('fd-can-3d').innerHTML = fdBool(fd.can_use_for_3d_generation);
+    $('fd-can-ar').innerHTML = fdBool(fd.can_use_for_ar_scale);
+
+    const warnMsgMap = {
+      ratio_preservation_failed_gpt_not_reliable_for_scale: 'GPT 비율 보존 실패 — AR 스케일 불신뢰',
+      ratio_evaluation_unavailable_cannot_verify_gpt_scale: 'GPT 비율 평가 불가 — 기준 bbox 없음',
+      dimension_confidence_low: '치수 신뢰도 낮음',
+      ratio_preservation_failed: '비율 보존 실패',
+      structural_occlusion_low_confidence: '구조 가림 감지 — 치수/3D 생성 신뢰도 낮음',
+      surface_obstacle_inpainting_unavailable: '표면 장애물 제거 이미지 생성 실패',
+      openai_insufficient_quota: 'OpenAI API 쿼터 부족 — GPT 판단/치수 추정은 로컬 대체값 사용',
+      openai_missing_credentials: 'OpenAI API 키 없음 — GPT 판단/치수 추정은 로컬 대체값 사용',
+      openai_rate_limited: 'OpenAI API rate limit — GPT 판단/치수 추정은 로컬 대체값 사용',
+      dimension_local_fallback_used: '치수는 카테고리 기본값 기반의 낮은 신뢰도 추정',
+    };
+    if (fdWarns.length > 0) {
+      $('fd-warnings').innerHTML = `<div class="warning-box ${hasError ? 'red' : 'yellow'}" style="margin-top:0;">` +
+        fdWarns.map(w => warnMsgMap[w] || w).join('<br>') + '</div>';
+    } else {
+      $('fd-warnings').innerHTML = '';
+    }
+  }
+
+  // ── Panel 1: Original ──
+  $('img-original').src = `/api/output/${jobId}/01_original.jpg`;
+
+  // ── Panel 2: Measurement ──
+  const cutoutNameLabels = {
+    dino_sam:'DINO + SAM',
+    dino_birefnet:'DINO + BiRefNet',
+    sam:'SAM',
+    birefnet:'BiRefNet 단독',
+    rmbg:'RMBG-1.4',
+    gpt_inpaint_birefnet:'GPT 제거 + BiRefNet'
+  };
+  const selectedMethod = data.selected_cutout_method || 'dino_birefnet';
+  const autoSelected = data.auto_selected_cutout || 'dino_birefnet';
+  // Use selected method's measurement image if available, fall back to SAM
+  const measImgMap = {
+    dino_sam: `02_measurement_dino_sam.png`,
+    dino_birefnet: `02_measurement_dino_birefnet.png`,
+    sam: `02_measurement.png`,
+    birefnet: `02_measurement_birefnet.png`,
+    rmbg: `02_measurement_rmbg.png`,
+  };
+  $('img-measurement').src = `/api/output/${jobId}/${measImgMap[selectedMethod] || '02_measurement.png'}`;
+  $('img-measurement').onerror = function() { this.src = `/api/output/${jobId}/02_measurement.png`; };
+
+  const methodColors = {dino_sam:'pb-measure', dino_birefnet:'pb-measure', sam:'pb-measure', birefnet:'pb-measure', rmbg:'pb-measure'};
+  const methodEl = $('measurement-method-badge');
+  methodEl.textContent = (cutoutNameLabels[selectedMethod] || selectedMethod).toUpperCase();
+  methodEl.className = 'panel-badge ' + (methodColors[selectedMethod] || 'pb-measure');
+
+  const segStep = (data.steps || []).find(s => s.step === 'measurement_image');
+  if (segStep) {
+    const cov = segStep.mask_coverage ? (segStep.mask_coverage * 100).toFixed(1) + '%' : '-';
+    const parts = (segStep.parts || []).map(p => `${p[0]}(${Number(p[1]).toFixed(2)})`).join(', ');
+    $('seg-info').textContent =
+      `DINO+SAM: ${segStep.num_parts || '?'}파트 | 커버리지 ${cov}` +
+      (parts ? ` | ${parts}` : '');
+  }
+
+  // ── Panel 3: Obstacle handling preview ──
+  const gptStep = (data.steps || []).find(s => s.step === 'gpt_cutout');
+  const gptFailed = (data.geometry_check || {}).gpt_cutout_failed;
+  const inpaintingUsed = !!data.inpainting_used;
+  const previewImgMap = {
+    dino_sam: '03_display_cutout.png',
+    dino_birefnet: '06_dino_birefnet_cutout.png',
+    sam: '03_display_cutout.png',
+    birefnet: '06_birefnet_cutout.png',
+    rmbg: '07_rmbg_cutout.png',
+  };
+  const previewFile = inpaintingUsed ? '05_obstacle_removed.png' : (previewImgMap[selectedMethod] || '06_dino_birefnet_cutout.png');
+  $('img-gpt-cutout').src = `/api/output/${jobId}/${previewFile}`;
+  $('img-gpt-cutout').onerror = function() { this.src = `/api/output/${jobId}/03_display_cutout.png`; };
+  $('preview-source-badge').textContent = inpaintingUsed ? 'GPT 장애물 제거 결과 / 치수 미사용' : `${cutoutNameLabels[selectedMethod] || selectedMethod} / 치수 기준`;
+  $('preview-source-badge').className = 'panel-badge ' + (inpaintingUsed ? 'pb-display-only' : 'pb-measure');
+  if (gptStep) {
+    const meta = [];
+    meta.push(obstacleLabels[obstacleStatus] || obstacleStatus);
+    if (gptStep.status === 'skipped') meta.push('GPT inpainting 생략');
+    if (inpaintingUsed) meta.push('표면 장애물 제거 후 BiRefNet 재누끼');
+    if (gptFailed) meta.push('<span style="color:#dc2626;">형상/구조 신뢰도 낮음</span>');
+    $('gpt-cutout-note').innerHTML = meta.join(' · ');
+  }
+
+  // ── Panel 4: Ratio Evaluation ──
+  const ev = data.ratio_eval || data.gpt_cutout_eval || {};
+  const ratioGrade = ev.ratio_grade || 'evaluation_unavailable';
+  let ratioPanelHtml = '';
+
+  if (ratioGrade === 'evaluation_unavailable') {
+    const reason = ev.reason || 'unknown';
+    const reasonMsgs = {
+      'no_reference_bbox': '기준 bbox를 생성할 수 없습니다',
+      'gpt_cutout_not_generated': 'GPT 누끼가 생성되지 않았습니다',
+      'gpt_bbox_unreadable': 'GPT 이미지에서 bbox를 읽을 수 없습니다',
+      'different_canvas_size_cannot_compare': '캔버스 크기가 달라 비교 불가',
+      'no_inpainting_needed': '장애물 제거가 필요하지 않습니다',
+      'structural_occlusion_not_inpainted': '구조 가림으로 GPT 복원 결과를 치수에 쓰지 않습니다',
+      'surface_obstacle_inpainting_failed': '표면 장애물 제거 이미지 생성 실패',
+      'post_inpaint_birefnet_bbox_unreadable': '장애물 제거 후 BiRefNet bbox를 읽을 수 없습니다',
+    };
+    const reasonDisplay = reason.startsWith('invalid_reference_bbox')
+      ? '기준 bbox 오류로 평가 불가'
+      : (reasonMsgs[reason] || reason);
+    ratioPanelHtml = `<div class="unavailable-box">
+      <div style="font-size:24px;margin-bottom:8px;">⊘</div>
+      <b>비율 평가 불가</b><br>
+      <span style="font-size:11px;">${reasonDisplay}</span><br>
+      <span style="font-size:11px;color:#64748b;">기준: ${ev.reference_bbox_source || '-'}</span>
+    </div>`;
+  } else {
+    const gradeColor = ratioGrade === 'pass' ? '#16a34a' : (ratioGrade === 'warning' ? '#ca8a04' : '#dc2626');
+    const score = ev.ratio_score ?? '-';
+    const refBbox = ev.reference_bbox_clamped || ev.reference_bbox_raw || [];
+    const gptBbox = ev.gpt_alpha_bbox || [];
+    const refW = refBbox.length >= 4 ? refBbox[2] - refBbox[0] : '-';
+    const refH = refBbox.length >= 4 ? refBbox[3] - refBbox[1] : '-';
+    const gptW = gptBbox.length >= 4 ? gptBbox[2] - gptBbox[0] : '-';
+    const gptH = gptBbox.length >= 4 ? gptBbox[3] - gptBbox[1] : '-';
+
+    ratioPanelHtml = `
+      <div style="text-align:center;margin-bottom:10px;">
+        <span style="font-size:28px;font-weight:700;color:${gradeColor};">${score}</span>
+        <span style="font-size:14px;color:#94a3b8;">/100</span>
+        <span class="badge ${ratioGrade}" style="margin-left:8px;">${ratioGrade}</span>
+      </div>
+      <div class="r-row"><span class="r-label">기준 소스</span><span class="r-val" style="font-size:11px;">${ev.reference_bbox_source||'-'}</span></div>
+      <div class="r-row"><span class="r-label">AR 차이</span><span class="r-val">${colorDiff(ev.aspect_ratio_diff_pct,5,10)}</span></div>
+      <div class="r-row"><span class="r-label">폭 차이</span><span class="r-val">${colorDiff(ev.width_diff_pct,10,15)}</span></div>
+      <div class="r-row"><span class="r-label">높이 차이</span><span class="r-val">${colorDiff(ev.height_diff_pct,10,15)}</span></div>
+      <div class="r-row"><span class="r-label">중심 이동</span><span class="r-val">${colorDiff(ev.center_shift_pct,10,15)}</span></div>
+      <div class="r-row"><span class="r-label">기준 bbox (W×H)</span><span class="r-val">${refW}×${refH}</span></div>
+      <div class="r-row"><span class="r-label">GPT bbox (W×H)</span><span class="r-val">${gptW}×${gptH}</span></div>
+      ${(ev.warnings||[]).length>0 ? `<div style="margin-top:6px;font-size:11px;color:#ca8a04;">${ev.warnings.join(', ')}</div>` : ''}
+    `;
+  }
+  $('ratio-panel-content').innerHTML = ratioPanelHtml;
+
+  // ── Dimension Table ──
+  const dims = data.dimensions || {};
+  $('dim-width').innerHTML = (dims.width_cm || '-') + ' <span class="unit">cm</span>';
+  $('dim-depth').innerHTML = (dims.depth_cm || '-') + ' <span class="unit">cm</span>';
+  $('dim-height').innerHTML = (dims.height_cm || '-') + ' <span class="unit">cm</span>';
+  const conf = (dims.confidence || 'unknown').toLowerCase();
+  $('dim-confidence').innerHTML = `<span class="confidence ${conf}">${conf}</span>`;
+  $('dim-reasoning').textContent = dims.reasoning || dims.reasoning_summary || '';
+
+  // ── Download Links ──
+  $('download-row').innerHTML =
+    `<a href="/api/output/${jobId}/06_dino_birefnet_cutout.png" download="furniture_dino_birefnet_cutout.png">DINO+BiRefNet 누끼</a>` +
+    `<a href="/api/output/${jobId}/03_display_cutout.png" download="furniture_dino_sam_cutout.png">DINO+SAM 누끼</a>` +
+    `<a href="/api/output/${jobId}/02_measurement.png" download="furniture_measurement.png">측정용 이미지</a>` +
+    (inpaintingUsed ? `<a href="/api/output/${jobId}/05_obstacle_removed.png" download="furniture_obstacle_removed.png">장애물 제거 이미지</a>` : '') +
+    `<a href="/api/output/${jobId}/04_mask.png" download="furniture_mask.png">마스크</a>`;
+
+  // ── Debug Section ──
+  // Geometry warnings
+  const gc = data.geometry_check || {};
+  const maskWarns = (gc.warnings || []).filter(w => w.includes('mask_too'));
+  let warnHtml = '';
+  if (maskWarns.length > 0) {
+    warnHtml = `<div class="warning-box yellow" style="margin-bottom:12px;"><b>마스크 경고:</b> ` +
+      maskWarns.map(w => w === 'mask_too_large_possible_background_leak' ? '마스크 너무 큼 (배경 포함 가능)' :
+        w === 'mask_too_small_possible_detection_failure' ? '마스크 너무 작음 (감지 실패 가능)' : w).join('<br>') + '</div>';
+  }
+  $('geometry-warnings').innerHTML = warnHtml;
+
+  // Model comparison grid in debug section
+  const modelsEval = data.cutout_models_eval || {};
+  const nameLabels = {
+    dino_sam: 'DINO + SAM',
+    dino_birefnet: 'DINO + BiRefNet',
+    sam: 'SAM Faithful',
+    birefnet: 'BiRefNet 단독',
+    rmbg: 'RMBG-1.4',
+    gpt_inpaint_birefnet: 'GPT 제거 + BiRefNet'
+  };
+  const imgMap = {
+    dino_sam: '03_display_cutout.png', dino_birefnet: '06_dino_birefnet_cutout.png',
+    sam: '03_display_cutout.png', birefnet: '06_birefnet_cutout.png',
+    rmbg: '07_rmbg_cutout.png', gpt_inpaint_birefnet: '05_obstacle_removed_birefnet_cutout.png',
+  };
+  $('auto-selected-model').textContent = nameLabels[autoSelected] || autoSelected;
+  $('measurement-mask-model').textContent = nameLabels[selectedMethod] || selectedMethod;
+
+  let gridHtml = '';
+  for (const [name, mev] of Object.entries(modelsEval)) {
+    const isSelected = name === selectedMethod;
+    const isAuto = name === autoSelected;
+    const qs = mev.quality_score ?? '-';
+    const cov = mev.mask_coverage ? (mev.mask_coverage * 100).toFixed(1) + '%' : '-';
+    const qsColor = qs >= 80 ? '#16a34a' : (qs >= 60 ? '#ca8a04' : '#dc2626');
+    const isGpt = name === 'gpt_inpaint_birefnet';
+    gridHtml += `
+      <div class="model-card${isSelected ? ' selected' : ''}${isAuto && !isSelected ? ' auto-best' : ''}" id="mc-${name}">
+        <img src="/api/output/${jobId}/${imgMap[name]}" onerror="this.style.display='none'" />
+        <div class="model-name">${nameLabels[name]||name}
+          ${isAuto ? '<span style="font-size:10px;color:#10b981;"> ★자동추천</span>' : ''}
+          ${isSelected && !isAuto ? '<span style="font-size:10px;color:#3b82f6;"> ✓선택됨</span>' : ''}
+          ${isGpt ? '<span style="font-size:10px;color:#dc2626;"> 치수측정불가</span>' : ''}
+        </div>
+        <div class="model-metrics">
+          <div>품질점수: <b style="color:${qsColor}">${qs}</b>/100 | 커버리지: ${cov}</div>
+          ${(mev.warnings||[]).length>0 ? `<div style="color:#dc2626;">경고: ${mev.warnings.length}건</div>` : ''}
+        </div>
+        ${!isGpt ? `<button class="select-btn${isSelected ? ' active' : ''}" onclick="selectCutout('${name}')">${isSelected ? '선택됨' : '이 모델 선택'}</button>` : '<div style="font-size:11px;color:#dc2626;margin-top:6px;">치수 측정 불가 / 미리보기 전용</div>'}
+      </div>`;
+  }
+  $('model-grid').innerHTML = gridHtml;
+
+  // Ratio overlay in debug
+  const overlayCard = $('ratio-overlay-card');
+  $('img-ratio-overlay').src = `/api/output/${jobId}/08_ratio_overlay.png`;
+  $('img-ratio-overlay').onerror = () => overlayCard.classList.add('hidden');
+  overlayCard.classList.remove('hidden');
+
+  // Ratio eval raw JSON
+  $('ratio-eval-raw').textContent = JSON.stringify(data.ratio_eval || data.gpt_cutout_eval || {}, null, 2);
+
+  $('results-card').classList.remove('hidden');
+}
+
+$('url-input').addEventListener('keydown', e => { if (e.key === 'Enter') doScrape(); });
+
+function selectCutout(modelName) {
+  if (!_lastProcessData) return;
+  const url = _lastProcessData.url;
+  if (!url || modelName.startsWith('gpt')) return;  // GPT-derived previews are not allowed for measurement
+
+  document.querySelectorAll('.model-card').forEach(c => c.classList.remove('selected'));
+  const card = document.getElementById('mc-' + modelName);
+  if (card) card.classList.add('selected');
+  document.querySelectorAll('.model-card .select-btn').forEach(b => {
+    b.classList.remove('active'); b.textContent = '이 모델 선택';
+  });
+  const btn = card?.querySelector('.select-btn');
+  if (btn) { btn.classList.add('active'); btn.textContent = '선택됨'; }
+  $('measurement-mask-model').textContent = modelName;
+
+  $('process-btn').disabled = true;
+  $('process-btn').textContent = '재측정 중...';
+
+  fetch('/api/process', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      url, selected_image_index: _lastProcessData.selected_image_index,
+      selected_cutout_method: modelName,
+    }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    $('process-btn').disabled = false;
+    $('process-btn').textContent = '치수 측정 시작';
+    if (!data.error) renderResults(data);
+  })
+  .catch(() => {
+    $('process-btn').disabled = false;
+    $('process-btn').textContent = '치수 측정 시작';
+  });
+}
+</script>
+</body>
+</html>
