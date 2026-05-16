@@ -93,7 +93,7 @@ export default function ModelPreviewPage() {
             className="mx-[20px] rounded-[24px] overflow-hidden relative"
             style={{ background: 'var(--color-surface-2)', height: 320 }}
           >
-            {/* @ts-expect-error model-viewer 웹 컴포넌트 */}
+            {/* @ts-ignore model-viewer 웹 컴포넌트 */}
             <model-viewer
               ref={mvRef}
               src={glbUrl}
