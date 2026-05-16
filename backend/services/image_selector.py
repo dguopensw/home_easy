@@ -1,6 +1,9 @@
-"""GPT-4o Vision을 사용해 가구 이미지 중 가장 적합한 이미지를 선정합니다."""
+"""GPT-4o Vision을 사용해 가구 이미지 중 가장 적합한 이미지를 선정합니다.
 
-from typing import Any
+실제 구현은 pipeline_core.choose_best_image 참고.
+"""
+
+from services.pipeline_core import choose_best_image as _choose_best_image
 
 
 async def select_best_image(image_urls: list[str], title: str = "", description: str = "") -> str:
@@ -13,8 +16,7 @@ async def select_best_image(image_urls: list[str], title: str = "", description:
 
     Returns:
         선택된 이미지 URL
-
-    TODO: OpenAI GPT-4o Vision API 호출로 가구 이미지 선정 구현
-          참고: pipeline_GPT/app.py 의 image selection 로직
     """
-    raise NotImplementedError("select_best_image 미구현")
+    result = _choose_best_image(title, description, image_urls)
+    idx = result["recommended_index"]
+    return image_urls[idx]

@@ -1,15 +1,15 @@
-"""Service Pipeline: SAM3-only experimental pipeline for furniture cutout & dimension service.
+"""pipeline_core — SAM3-only 가구 파이프라인 핵심 서비스 함수 모음.
 
-Experimental: SAM3-only cutout (no DINO bbox, no BiRefNet).
+SAM3-only cutout 방식:
   URL → scrape → image selection → SAM3 part-based furniture mask
       → measurement image (original + SAM3 mask, gray bg)
       → final_cutout (SAM3 mask as alpha, original pixels)
       → contaminant analysis → (if needed: LaMa inpaint → generation cutout)
       → dimension estimation → result
 
-Run:
-    python -m uvicorn service_pipeline:app --host 127.0.0.1 --port 5004
-"""
+이 파일은 backend/services/ 에서 import해서 사용합니다.
+
+NOTE: _core 모듈(app.py 기반)이 필요합니다. backend/core.py 로 구현 후 연결하세요.
 from __future__ import annotations
 
 import json
@@ -22,11 +22,6 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
 # Paths & env
@@ -41,9 +36,9 @@ SERVICE_STATIC_DIR = PIPELINE_DIR / "service_static"
 sys.path.insert(0, str(PROJECT_ROOT / "nanobanana_ratio_project"))
 
 # Reuse core functions from app.py (legacy pipeline is preserved, not modified)
-import app as _core
+# NOTE: _core = app.py 의 핵심 함수들. backend/core.py 로 구현 후 아래 주석을 해제하세요.
+# from backend import core as _core
 
-_core.load_runtime_environment()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -52,17 +47,6 @@ logger = logging.getLogger(__name__)
 # FastAPI app
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="Furniture Service Pipeline", version="service_v1")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-if SERVICE_STATIC_DIR.exists():
-    app.mount("/service_static", StaticFiles(directory=str(SERVICE_STATIC_DIR)), name="service_static")
 
 
 # ---------------------------------------------------------------------------
@@ -3322,78 +3306,3 @@ def _resolve_type_source(furniture_info: dict) -> str:
 # API Routes
 # ---------------------------------------------------------------------------
 
-@app.get("/")
-def index():
-    html_path = SERVICE_STATIC_DIR / "index.html"
-    if html_path.exists():
-        return FileResponse(str(html_path))
-    return HTMLResponse(
-        "<h1>Service Pipeline is running.</h1>"
-        "<p>Place <code>service_static/index.html</code> for the UI.</p>",
-        status_code=200,
-    )
-
-
-@app.get("/api/health")
-def health():
-    return {"status": "ok", "framework": "fastapi", "pipeline": "service_v1"}
-
-
-@app.post("/api/scrape")
-def api_scrape(body: ScrapeRequest):
-    url = body.url.strip()
-    if not url:
-        raise HTTPException(status_code=400, detail="URL을 입력해주세요.")
-
-    platform = _core.identify_platform(url)
-    if not platform:
-        raise HTTPException(status_code=400, detail="당근마켓 또는 중고나라 URL만 지원합니다.")
-
-    try:
-        scraped = scrape_listing(url)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"스크래핑 실패: {e}")
-
-    image_urls = scraped.get("images", [])
-    title = scraped.get("title", "")
-    description = scraped.get("description", "")
-
-    image_ranking = choose_best_image(title, description, image_urls)
-    listing_dims = parse_listing_dimensions(title, description)
-    listing_class = _core.classify_furniture_from_listing(title, description)
-
-    return JSONResponse(content={
-        "title": title,
-        "description": description,
-        "price": scraped.get("price", ""),
-        "platform": scraped.get("platform", ""),
-        "image_urls": image_urls,
-        "ai_recommended_image_index": image_ranking["recommended_index"],
-        "ranked_candidate_indices": image_ranking["ranked_candidate_indices"],
-        "image_reasoning": {str(k): v for k, v in image_ranking.get("reasoning", {}).items()},
-        "furniture_guess": {
-            "type": listing_class["furniture_type"],
-            "confidence": listing_class["confidence"],
-        },
-        "dimensions_from_listing": listing_dims,
-    })
-
-
-@app.post("/api/process")
-def api_process(body: ProcessRequest):
-    url = body.url.strip()
-    if not url:
-        raise HTTPException(status_code=400, detail="URL을 입력해주세요.")
-
-    result, status_code = run_service_pipeline(url, body.selected_image_index)
-    return JSONResponse(content=result, status_code=status_code)
-
-
-@app.get("/api/output/{job_id}/{filename}")
-def serve_output(job_id: str, filename: str):
-    safe_job_id = Path(job_id).name
-    safe_filename = Path(filename).name
-    file_path = OUTPUT_DIR / safe_job_id / safe_filename
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(str(file_path))

@@ -10,18 +10,20 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from services.generation_service import run_pipeline_sse
+from services.generation_service import register_job, run_pipeline_sse
 
 router = APIRouter()
 
 
 class StartRequest(BaseModel):
     source_url: str
+    selected_image_index: int = 0
 
 
 @router.post("/start")
-async def start_generation(body: StartRequest, db: AsyncSession = Depends(get_db)):
+async def start_generation(body: StartRequest):
     job_id = str(uuid.uuid4())
+    register_job(job_id, body.source_url, body.selected_image_index)
     return {"job_id": job_id, "source_url": body.source_url}
 
 
