@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import StepList, { PipelineStep, STEP_ORDER, STEPS } from './components/StepList'
+import StepList, { PipelineStep, STEPS } from './components/StepList'
 
 const STEP_PROGRESS: Record<PipelineStep, number> = {
   crawling:       5,
