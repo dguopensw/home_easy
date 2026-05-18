@@ -44,6 +44,26 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# SAM 3 lazy singleton (Meta SAM 3, 2025.11 릴리즈)
+# GroundingDINO + SAM 1 파이프라인을 대체 — 텍스트 → 마스크 직접 처리
+# ---------------------------------------------------------------------------
+
+_sam3_processor = None
+
+
+def _get_sam3_processor():
+    """SAM 3 processor 싱글톤 반환 (최초 호출 시 모델 로드)."""
+    global _sam3_processor
+    if _sam3_processor is None:
+        from sam3.model_builder import build_sam3_image_model
+        from sam3.model.sam3_image_processor import Sam3Processor
+        model = build_sam3_image_model()
+        _sam3_processor = Sam3Processor(model)
+        logger.info("SAM 3 model loaded")
+    return _sam3_processor
+
+
+# ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
 
@@ -549,7 +569,7 @@ def segment_objects_with_sam3(
     output_mask_path: Path = None,
     mode: str = "major_obstacle",
 ) -> dict:
-    """Generate union object mask via GroundingDINO + SAM predictor.
+    """Generate union object mask via SAM 3 native text prompting.
 
     mode="major_obstacle"        : original obstacle segmentation (area threshold 70%).
     mode="generation_contaminant": smaller objects allowed (area threshold 35%),
@@ -574,55 +594,38 @@ def segment_objects_with_sam3(
             name = o.get("name", "object")
             location = o.get("location", "")
             parts.append(f"{name} {location}".strip() if location else name)
-        prompt_text = ". ".join(parts) + "." if parts else "object on furniture."
+        prompt_text = ". ".join(parts) if parts else "object on furniture"
     else:
-        prompt_text = ". ".join(object_names) + "."
+        prompt_text = ". ".join(object_names) if object_names else "obstacle on furniture"
 
     area_threshold = 0.35 if mode == "generation_contaminant" else 0.70
 
     try:
-        import torch
+        import numpy as np
         from PIL import Image
 
-        segmenter = _core.get_segmenter()
-        gsam = _core._get_gsam(segmenter)
-
-        if not hasattr(gsam, "processor") or not hasattr(gsam, "predictor"):
-            return {"status": "failed", "error": "gsam_not_available", "mask_coverage": 0.0}
-
+        sam3 = _get_sam3_processor()
         pil_image = Image.open(image_path).convert("RGB")
-        image_np = np.array(pil_image)
 
-        inputs = gsam.processor(images=pil_image, text=prompt_text, return_tensors="pt")
-        inputs = {k: v.to(gsam.device) for k, v in inputs.items()}
+        inference_state = sam3.set_image(pil_image)
+        output = sam3.set_text_prompt(state=inference_state, prompt=prompt_text)
 
-        with torch.no_grad():
-            outputs = gsam.detector(**inputs)
+        masks_out = output.get("masks", [])
+        boxes_out = output.get("boxes", [])
+        scores_out = output.get("scores", [])
 
-        results = gsam.processor.post_process_grounded_object_detection(
-            outputs,
-            input_ids=inputs.get("input_ids"),
-            threshold=0.20,
-            text_threshold=0.20,
-            target_sizes=[(h, w)],
-        )[0]
-
-        boxes = results.get("boxes")
-        scores = results.get("scores")
-
-        if boxes is None or len(boxes) == 0:
+        if len(masks_out) == 0:
             logger.warning("SAM3: no detections for: %s", prompt_text)
             return {"status": "no_detections", "error": None, "mask_coverage": 0.0,
                     "prompts_used": object_names}
 
-        gsam.predictor.set_image(image_np)
         union_mask = np.zeros((h, w), dtype=np.uint8)
         obstacle_count = 0
 
-        for i in range(len(boxes)):
-            box = boxes[i].detach().cpu().numpy()
-            box_w = box[2] - box[0]
-            box_h = box[3] - box[1]
+        for mask, box, score in zip(masks_out, boxes_out, scores_out):
+            box_arr = np.array(box, dtype=float)
+            box_w = box_arr[2] - box_arr[0]
+            box_h = box_arr[3] - box_arr[1]
 
             # Skip detections that are too large (likely the furniture itself)
             if (box_w * box_h) / (w * h) > area_threshold:
@@ -631,20 +634,18 @@ def segment_objects_with_sam3(
             # Skip if this detection is essentially the furniture bbox
             if furniture_dino_bbox:
                 dx1, dy1, dx2, dy2 = furniture_dino_bbox
-                inter_x1 = max(box[0], dx1)
-                inter_y1 = max(box[1], dy1)
-                inter_x2 = min(box[2], dx2)
-                inter_y2 = min(box[3], dy2)
+                inter_x1 = max(box_arr[0], dx1)
+                inter_y1 = max(box_arr[1], dy1)
+                inter_x2 = min(box_arr[2], dx2)
+                inter_y2 = min(box_arr[3], dy2)
                 if inter_x2 > inter_x1 and inter_y2 > inter_y1:
                     inter_area = (inter_x2 - inter_x1) * (inter_y2 - inter_y1)
                     furn_area = max((dx2 - dx1) * (dy2 - dy1), 1)
                     if inter_area / furn_area > 0.85:
                         continue
 
-            masks, sam_scores, _ = gsam.predictor.predict(box=box, multimask_output=True)
-            best_idx = int(np.argmax(sam_scores))
-            mask = masks[best_idx].astype(np.uint8) * 255
-            union_mask = np.maximum(union_mask, mask)
+            mask_uint8 = (np.array(mask) > 0.5).astype(np.uint8) * 255
+            union_mask = np.maximum(union_mask, mask_uint8)
             obstacle_count += 1
 
         if obstacle_count == 0:
@@ -1543,55 +1544,44 @@ def generate_sam3_furniture_mask(
         import torch
         from PIL import Image as _PIL_Image
 
-        segmenter = _core.get_segmenter()
-        gsam = _core._get_gsam(segmenter)
-
-        if not hasattr(gsam, "processor") or not hasattr(gsam, "predictor"):
-            return {"status": "failed", "error": "gsam_not_available",
-                    "masking_family": masking_family, "valid_part_count": 0}
-
+        sam3 = _get_sam3_processor()
         pil_image = _PIL_Image.open(image_path).convert("RGB")
-        image_np = np.array(pil_image)
-        gsam.predictor.set_image(image_np)
 
         union_mask = np.zeros((h, w), dtype=np.uint8)
         prompts_used: list[str] = []
 
         def _detect_and_union(prompt: str, max_area_ratio: float,
                               min_score: float = 0.20, multi_box: bool = False) -> int:
-            """Run GSAM for prompt, SAM-predict each valid box, union into union_mask."""
+            """SAM 3 text prompt → 마스크 생성 후 union_mask에 합산."""
             nonlocal union_mask
-            inputs = gsam.processor(images=pil_image, text=prompt + ".", return_tensors="pt")
-            inputs = {k: v.to(gsam.device) for k, v in inputs.items()}
-            with torch.no_grad():
-                outputs = gsam.detector(**inputs)
-            results = gsam.processor.post_process_grounded_object_detection(
-                outputs,
-                input_ids=inputs.get("input_ids"),
-                threshold=min_score,
-                text_threshold=min_score,
-                target_sizes=[(h, w)],
-            )[0]
-            boxes = results.get("boxes")
-            scores = results.get("scores")
-            if boxes is None or len(boxes) == 0:
+            try:
+                state = sam3.set_image(pil_image)
+                out = sam3.set_text_prompt(state=state, prompt=prompt)
+            except Exception as e:
+                logger.warning("SAM3 '%s': inference error: %s", prompt, e)
+                return 0
+
+            masks_out = out.get("masks", [])
+            boxes_out = out.get("boxes", [])
+            scores_out = out.get("scores", [])
+
+            if len(masks_out) == 0:
                 logger.info("SAM3 '%s': no detections", prompt)
                 return 0
 
-            indices = list(range(len(boxes))) if multi_box else [int(torch.argmax(scores).item())]
+            scores_f = [float(s) for s in scores_out]
+            indices = list(range(len(masks_out))) if multi_box else [int(np.argmax(scores_f))]
             added = 0
             for i in indices:
-                if float(scores[i].item()) < min_score:
+                if scores_f[i] < min_score:
                     continue
-                box = boxes[i].detach().cpu().numpy()
+                box = np.array(boxes_out[i], dtype=float)
                 bw, bh = box[2] - box[0], box[3] - box[1]
                 if (bw * bh) / (w * h) > max_area_ratio:
                     logger.info("SAM3 '%s' box %d: area ratio %.2f > %.2f, skip",
                                 prompt, i, (bw * bh) / (w * h), max_area_ratio)
                     continue
-                masks, sam_scores, _ = gsam.predictor.predict(box=box, multimask_output=True)
-                best_idx = int(np.argmax(sam_scores))
-                part_mask = masks[best_idx].astype(np.uint8) * 255
+                part_mask = (np.array(masks_out[i]) > 0.5).astype(np.uint8) * 255
                 cov = float(np.count_nonzero(part_mask > 127)) / (h * w)
                 if cov < 0.001 or cov > max_area_ratio:
                     logger.info("SAM3 '%s' box %d: coverage %.3f out of range, skip",
@@ -1604,37 +1594,35 @@ def generate_sam3_furniture_mask(
 
         def _collect_masks(prompt: str, max_area_ratio: float,
                            min_score: float = 0.20, multi_box: bool = False) -> list:
-            """Run GSAM for prompt, return list of SAM masks without unioning."""
-            inputs = gsam.processor(images=pil_image, text=prompt + ".", return_tensors="pt")
-            inputs = {k: v.to(gsam.device) for k, v in inputs.items()}
-            with torch.no_grad():
-                outputs = gsam.detector(**inputs)
-            results = gsam.processor.post_process_grounded_object_detection(
-                outputs,
-                input_ids=inputs.get("input_ids"),
-                threshold=min_score,
-                text_threshold=min_score,
-                target_sizes=[(h, w)],
-            )[0]
-            boxes = results.get("boxes")
-            scores = results.get("scores")
-            if boxes is None or len(boxes) == 0:
+            """SAM 3 text prompt → 마스크 목록 반환 (union 없이)."""
+            try:
+                state = sam3.set_image(pil_image)
+                out = sam3.set_text_prompt(state=state, prompt=prompt)
+            except Exception as e:
+                logger.warning("SAM3 '%s': inference error: %s", prompt, e)
+                return []
+
+            masks_out = out.get("masks", [])
+            boxes_out = out.get("boxes", [])
+            scores_out = out.get("scores", [])
+
+            if len(masks_out) == 0:
                 logger.info("SAM3 '%s': no detections", prompt)
                 return []
-            indices = list(range(len(boxes))) if multi_box else [int(torch.argmax(scores).item())]
+
+            scores_f = [float(s) for s in scores_out]
+            indices = list(range(len(masks_out))) if multi_box else [int(np.argmax(scores_f))]
             collected = []
             for i in indices:
-                if float(scores[i].item()) < min_score:
+                if scores_f[i] < min_score:
                     continue
-                box = boxes[i].detach().cpu().numpy()
+                box = np.array(boxes_out[i], dtype=float)
                 bw, bh = box[2] - box[0], box[3] - box[1]
                 if (bw * bh) / (w * h) > max_area_ratio:
                     logger.info("SAM3 '%s' box %d: area %.2f > %.2f, skip",
                                 prompt, i, (bw * bh) / (w * h), max_area_ratio)
                     continue
-                masks, sam_scores, _ = gsam.predictor.predict(box=box, multimask_output=True)
-                best_idx = int(np.argmax(sam_scores))
-                part_mask = masks[best_idx].astype(np.uint8) * 255
+                part_mask = (np.array(masks_out[i]) > 0.5).astype(np.uint8) * 255
                 cov = float(np.count_nonzero(part_mask > 127)) / (h * w)
                 if cov < 0.001 or cov > max_area_ratio:
                     logger.info("SAM3 '%s' box %d: coverage %.3f out of range, skip",
@@ -1646,49 +1634,52 @@ def generate_sam3_furniture_mask(
 
         def _collect_soft_masks(prompt: str, max_area_ratio: float,
                                 min_score: float = 0.20, multi_box: bool = False) -> list:
-            """Like _collect_masks but uses select_best_soft_furniture_sam_mask
-            to pick the SAM candidate with least floor/support-surface coverage.
-            Only called inside the soft_furniture branch.
+            """_collect_masks와 동일하나 소프트 가구 마스크 선택 로직 적용.
+            floor/support-surface coverage가 가장 적은 마스크를 선택.
+            soft_furniture 브랜치에서만 호출.
             """
-            inputs = gsam.processor(images=pil_image, text=prompt + ".", return_tensors="pt")
-            inputs = {k: v.to(gsam.device) for k, v in inputs.items()}
-            with torch.no_grad():
-                outputs = gsam.detector(**inputs)
-            results = gsam.processor.post_process_grounded_object_detection(
-                outputs,
-                input_ids=inputs.get("input_ids"),
-                threshold=min_score,
-                text_threshold=min_score,
-                target_sizes=[(h, w)],
-            )[0]
-            boxes  = results.get("boxes")
-            scores = results.get("scores")
-            if boxes is None or len(boxes) == 0:
-                logger.info("SAM3-soft '%s': no detections", prompt)
+            try:
+                state = sam3.set_image(pil_image)
+                out = sam3.set_text_prompt(state=state, prompt=prompt)
+            except Exception as e:
+                logger.warning("SAM3 '%s': inference error: %s", prompt, e)
                 return []
-            indices = list(range(len(boxes))) if multi_box else [int(torch.argmax(scores).item())]
-            collected = []
+
+            masks_out = out.get("masks", [])
+            boxes_out = out.get("boxes", [])
+            scores_out = out.get("scores", [])
+
+            if len(masks_out) == 0:
+                logger.info("SAM3 '%s': no detections", prompt)
+                return []
+
+            scores_f = [float(s) for s in scores_out]
+            indices = list(range(len(masks_out))) if multi_box else [int(np.argmax(scores_f))]
+            raw_masks = []
+            raw_scores = []
             for i in indices:
-                if float(scores[i].item()) < min_score:
+                if scores_f[i] < min_score:
                     continue
-                box = boxes[i].detach().cpu().numpy()
+                box = np.array(boxes_out[i], dtype=float)
                 bw, bh = box[2] - box[0], box[3] - box[1]
                 if (bw * bh) / (w * h) > max_area_ratio:
-                    logger.info("SAM3-soft '%s' box %d: area %.2f > %.2f, skip",
-                                prompt, i, (bw * bh) / (w * h), max_area_ratio)
                     continue
-                masks_out, sam_s, _ = gsam.predictor.predict(box=box, multimask_output=True)
-                part_mask = select_best_soft_furniture_sam_mask(masks_out, sam_s, (h, w))
-                if part_mask is None:
-                    continue
+                part_mask = (np.array(masks_out[i]) > 0.5).astype(np.uint8) * 255
                 cov = float(np.count_nonzero(part_mask > 127)) / (h * w)
                 if cov < 0.001 or cov > max_area_ratio:
-                    logger.info("SAM3-soft '%s' box %d: coverage %.3f out of range, skip",
-                                prompt, i, cov)
                     continue
-                collected.append(part_mask)
-                logger.info("SAM3-soft '%s' box %d: collected (coverage=%.3f)", prompt, i, cov)
-            return collected
+                raw_masks.append(part_mask)
+                raw_scores.append(scores_f[i])
+
+            if not raw_masks:
+                return []
+
+            # 소프트 가구 전용: floor leakage 가장 적은 마스크 선택
+            best = select_best_soft_furniture_sam_mask(
+                np.array(raw_masks), np.array(raw_scores), (h, w)
+            )
+            return [best] if best is not None else []
+
 
         # ── Strategy dispatch ─────────────────────────────────────────────
         valid_parts = 0
@@ -2056,16 +2047,9 @@ def cleanup_soft_support_surface_leakage(
     protected_mask = np.maximum(prot_erode, prot_upper)
 
     try:
-        segmenter = _core.get_segmenter()
-        gsam      = _core._get_gsam(segmenter)
-        if not hasattr(gsam, "processor") or not hasattr(gsam, "predictor"):
-            raise RuntimeError("gsam_not_available")
-
-        import torch
         from PIL import Image as _PIL
+        sam3 = _get_sam3_processor()
         pil_image = _PIL.open(image_path).convert("RGB")
-        image_np  = np.array(pil_image)
-        gsam.predictor.set_image(image_np)
 
         _SUPPORT_PROMPTS = [
             "floor under the sofa",
@@ -2077,27 +2061,22 @@ def cleanup_soft_support_surface_leakage(
 
         support_union = np.zeros((h, w), np.uint8)
         for sp in _SUPPORT_PROMPTS:
-            inp = gsam.processor(images=pil_image, text=sp + ".", return_tensors="pt")
-            inp = {k: v.to(gsam.device) for k, v in inp.items()}
-            with torch.no_grad():
-                out = gsam.detector(**inp)
-            res = gsam.processor.post_process_grounded_object_detection(
-                out,
-                input_ids=inp.get("input_ids"),
-                threshold=0.20,
-                text_threshold=0.20,
-                target_sizes=[(h, w)],
-            )[0]
-            boxes  = res.get("boxes")
-            scores = res.get("scores")
-            if boxes is None or len(boxes) == 0:
+            try:
+                state = sam3.set_image(pil_image)
+                out = sam3.set_text_prompt(state=state, prompt=sp)
+            except Exception as _e:
+                logger.warning("SAM3 support prompt '%s' failed: %s", sp, _e)
                 continue
-            bi = int(torch.argmax(scores).item())
-            box = boxes[bi].detach().cpu().numpy()
+            masks_sp = out.get("masks", [])
+            boxes_sp = out.get("boxes", [])
+            scores_sp = out.get("scores", [])
+            if len(masks_sp) == 0:
+                continue
+            bi = int(np.argmax([float(s) for s in scores_sp]))
+            box = np.array(boxes_sp[bi], dtype=float)
             if ((box[2] - box[0]) * (box[3] - box[1])) / (w * h) > 0.70:
                 continue
-            ms, ss, _ = gsam.predictor.predict(box=box, multimask_output=True)
-            cand = ms[int(np.argmax(ss))].astype(np.uint8) * 255
+            cand = (np.array(masks_sp[bi]) > 0.5).astype(np.uint8) * 255
             cov  = float(np.count_nonzero(cand > 127)) / (w * h)
             if 0.01 <= cov <= 0.60:
                 support_union = np.maximum(support_union, cand)
