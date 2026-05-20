@@ -62,7 +62,31 @@ def generate_3d_model(job_id: str, image_url: str) -> dict:
     # 2. TRELLIS.2로 3D 생성
     print(f"[{job_id}] 3D 모델 생성 중... (약 120초 소요)")
     start_t = time.time()
-    mesh = pipeline.run(image, seed=42)[0]
+    mesh = pipeline.run(
+        image,
+        seed=42,
+        # 전체적인 윤곽을 잡 단계
+        sparse_structure_sampler_params={
+            "steps": 12,
+            "guidance_strength": 7.5,
+            "guidance_rescale": 0.7,
+            "rescale_t": 5.0,
+        },
+        # 만들어진 뼈대 위에 살 붙이는 단계
+        shape_slat_sampler_params={
+            "steps": 12,
+            "guidance_strength": 7.5,
+            "guidance_rescale": 0.5,
+            "rescale_t": 3.0,
+        },
+        # 색칠하는 단계
+        tex_slat_sampler_params={
+            "steps": 12,
+            "guidance_strength": 1.0,
+            "guidance_rescale": 0.0,
+            "rescale_t": 3.0,
+        }
+    )[0]
     print(f"[{job_id}] 3D 생성 완료! ({time.time() - start_t:.1f}초)")
 
     # 3. GLB 변환 파라미터값 조정
