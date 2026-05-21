@@ -24,11 +24,29 @@ def _get_pipe():
     return _pipe
 
 
+_FURNITURE_PROMPTS: dict[str, str] = {
+    "sofa":     "clean sofa seat with smooth fabric upholstery, no objects placed on it",
+    "chair":    "clean chair seat with smooth fabric, no objects on it",
+    "desk":     "clean empty desk surface with smooth texture, nothing on top",
+    "table":    "clean empty table surface with smooth texture, nothing on top",
+    "bed":      "clean bed with smooth bedding, no objects placed on it",
+    "wardrobe": "clean wardrobe surface, no objects in front of it",
+    "drawer":   "clean drawer surface, no objects in front of it",
+    "shelf":    "clean shelf with smooth surface, no objects blocking it",
+}
+
+_DEFAULT_PROMPT = "clean furniture surface, smooth texture, no objects placed on or in front of it"
+
+
+def _get_prompt(furniture_type: str) -> str:
+    return _FURNITURE_PROMPTS.get(furniture_type.lower(), _DEFAULT_PROMPT)
+
+
 def inpaint_with_flux(
     image_path: Path,
     mask_path: Path,
     output_path: Path,
-    prompt: str = "clean furniture, remove objects, empty clean background, no items on furniture",
+    furniture_type: str = "",
     num_inference_steps: int = 28,
     guidance_scale: float = 30.0,
 ) -> dict:
@@ -47,6 +65,8 @@ def inpaint_with_flux(
 
     try:
         pipe = _get_pipe()
+        prompt = _get_prompt(furniture_type)
+        logger.info("Flux inpainting prompt: %s", prompt)
 
         image = Image.open(image_path).convert("RGB")
         mask = Image.open(mask_path).convert("L")

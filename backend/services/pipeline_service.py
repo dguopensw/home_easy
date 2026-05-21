@@ -281,6 +281,7 @@ class PipelineService:
                         boundary_completed_path = job_dir / "08_boundary_completed.png"
                         bc_result = self.inpainting.inpaint_with_flux(
                             original_path, lama_src_mask, boundary_completed_path,
+                            furniture_type=furniture_type,
                         )
 
                         if bc_result.get("status") == "done":
@@ -316,6 +317,7 @@ class PipelineService:
                         obs_removed_file = job_dir / "05_obstacle_removed.png"
                         inpainting_info = self.inpainting.inpaint_with_flux(
                             original_path, union_mask_path, obs_removed_file,
+                            furniture_type=furniture_type,
                         )
 
                         if inpainting_info["status"] == "done":
