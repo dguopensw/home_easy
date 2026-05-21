@@ -4,12 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.pipeline_service import PipelineService
 
-_pipeline = PipelineService()
-
 
 class GenerationService:
     def __init__(self):
-        self._pipeline = _pipeline
+        self._pipeline = PipelineService()
 
     def create_job_id(self) -> str:
         return str(uuid.uuid4())

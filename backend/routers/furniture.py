@@ -20,10 +20,14 @@ def serve_output(job_id: str, filename: str):
     return FileResponse(str(file_path))
 
 
-@router.get("/{job_id}")
+@router.get("/job/{job_id}")
 async def get_furniture(job_id: str, db: AsyncSession = Depends(get_db)):
-    """job_id로 DB 조회 후 Job 결과 반환."""
+    """job_id로 Job 결과 반환."""
     import json
+
+    # "output" 예약어는 파일 서빙 경로와 충돌하므로 거부
+    if job_id == "output":
+        raise HTTPException(status_code=400, detail="Invalid job_id")
 
     result_file = OUTPUT_DIR / job_id / "result.json"
     if not result_file.exists():
