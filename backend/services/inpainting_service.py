@@ -19,10 +19,11 @@ class InpaintingService:
         image_path: Path,
         obstacle_mask_path: Path,
         output_path: Path,
+        furniture_type: str = "",
     ) -> dict:
         """Flux-Fill + BrushNet 스타일 합성으로 마스크 영역을 인페인팅합니다."""
         from services.inpainting_flux import inpaint_with_flux
-        return inpaint_with_flux(image_path, obstacle_mask_path, output_path)
+        return inpaint_with_flux(image_path, obstacle_mask_path, output_path, furniture_type=furniture_type)
 
     # ── LaMa 인페인팅 ─────────────────────────────────────────────────────
 
