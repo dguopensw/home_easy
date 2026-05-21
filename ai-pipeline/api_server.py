@@ -1,4 +1,6 @@
 import threading
+from dotenv import load_dotenv
+load_dotenv()
 from flask import Flask, request, jsonify
 from steps.model_generator import generate_3d_model
 
