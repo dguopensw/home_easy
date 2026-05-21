@@ -337,38 +337,47 @@ class PipelineService:
                 gen_cutout_file = job_dir / "06_generation_cutout.png"
                 gen_mask_file   = job_dir / "06_generation_mask.png"
 
-                # 인페인팅된 이미지에 SAM 재실행 → 담요 등이 사라진 상태의 깨끗한 가구 마스크 생성
-                # BrushNet 합성 덕분에 마스크 영역 외에는 원본 픽셀이 그대로라 SAM 결과가 안정적
-                gen_raw_mask_file = job_dir / "06_generation_raw_mask.png"
-                gen_alpha_mask_file = job_dir / "06_generation_alpha_mask.png"
-
-                regen_info = self.segmentation.generate_sam3_furniture_mask_natural(
-                    obstacle_removed_path, furniture_type, gen_raw_mask_file,
-                    title=title, description=description,
-                )
-                generation_mask_expansion_info = {"method": "sam_rerun_on_inpainted", "status": regen_info.get("status")}
-
-                if regen_info.get("status") == "done":
-                    # 재실행된 마스크도 동일한 정제 파이프라인 적용
-                    regen_refine_info = self.segmentation.refine_mask_for_output(
-                        gen_raw_mask_file, furniture_type, detected_family, detected_subtype,
-                        gen_mask_file, gen_alpha_mask_file,
+                if boundary_completion_used and cont_mask_file is not None:
+                    generation_mask_expansion_info = self.inpainting.expand_generation_mask_for_boundary_completion(
+                        final_mask_path, cont_mask_file, gen_mask_file,
+                        boundary_occlusion_info, masking_family=detected_family,
                     )
-                    if regen_refine_info["status"] != "done":
-                        shutil.copy2(str(gen_raw_mask_file), str(gen_mask_file))
-                        warnings.append("generation_mask_refine_failed_used_raw")
                     gen_mask_for_cutout = gen_mask_file
-                    warnings.append("generation_mask_regenerated_via_sam_on_inpainted")
                 else:
-                    # SAM 재실행 실패 시 기존 방식으로 폴백
-                    warnings.append("generation_sam_rerun_failed_fallback_to_original_mask")
-                    if boundary_completion_used and cont_mask_file is not None:
-                        generation_mask_expansion_info = self.inpainting.expand_generation_mask_for_boundary_completion(
-                            final_mask_path, cont_mask_file, gen_mask_file,
-                            boundary_occlusion_info, masking_family=detected_family,
-                        )
-                    else:
+                    # 방법 A: final_mask + (가구 영역 내부에 있는) contaminant/obstacle 마스크 union
+                    # → 담요/오염물이 있던 자리가 final_mask의 구멍으로 남는 문제를 해결
+                    final_arr = cv2.imread(str(final_mask_path), cv2.IMREAD_GRAYSCALE)
+                    if final_arr is None:
                         shutil.copy2(str(final_mask_path), str(gen_mask_file))
+                        generation_mask_expansion_info = {"method": "copy_only", "status": "final_mask_unreadable"}
+                    else:
+                        expanded = final_arr.copy()
+                        # 가구 영역의 외곽 + 약간의 여유 (소파 위·앞쪽에 걸쳐있던 객체 포함하기 위함)
+                        # 25px 정도 dilate → 이 영역 내부에 있는 오염물/장애물만 가구 마스크로 흡수
+                        region_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (51, 51))
+                        furniture_region = cv2.dilate(final_arr, region_kernel, iterations=1)
+
+                        absorbed = 0
+                        for extra_arr in [contaminant_mask_arr, obstacle_mask_arr]:
+                            if extra_arr is None or extra_arr.shape != expanded.shape:
+                                continue
+                            inside = cv2.bitwise_and(extra_arr, furniture_region)
+                            before = int(np.count_nonzero(expanded > 127))
+                            expanded = np.maximum(expanded, inside)
+                            after = int(np.count_nonzero(expanded > 127))
+                            absorbed += (after - before)
+
+                        # morphological closing으로 작은 구멍 마무리
+                        close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+                        expanded = cv2.morphologyEx(expanded, cv2.MORPH_CLOSE, close_kernel)
+
+                        cv2.imwrite(str(gen_mask_file), expanded)
+                        generation_mask_expansion_info = {
+                            "method": "method_a_union_contaminant_obstacle",
+                            "status": "done",
+                            "pixels_absorbed": absorbed,
+                        }
+                        warnings.append("generation_mask_expanded_via_method_a")
                     gen_mask_for_cutout = gen_mask_file
 
                 gen_build_info = self.segmentation.apply_mask_to_image(
