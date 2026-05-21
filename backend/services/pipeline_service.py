@@ -279,7 +279,7 @@ class PipelineService:
                             lama_src_mask = completion_mask_path
 
                         boundary_completed_path = job_dir / "08_boundary_completed.png"
-                        bc_result = self.inpainting.inpaint_with_lama(
+                        bc_result = self.inpainting.inpaint_with_flux(
                             original_path, lama_src_mask, boundary_completed_path,
                         )
 
@@ -314,7 +314,7 @@ class PipelineService:
                         cv2.imwrite(str(union_mask_path), union_arr)
 
                         obs_removed_file = job_dir / "05_obstacle_removed.png"
-                        inpainting_info = self.inpainting.inpaint_with_lama(
+                        inpainting_info = self.inpainting.inpaint_with_flux(
                             original_path, union_mask_path, obs_removed_file,
                         )
 
@@ -324,7 +324,7 @@ class PipelineService:
                             if has_contaminants:
                                 warnings.append("generation_uses_contaminant_removed_image")
                         else:
-                            warnings.append("lama_inpainting_failed_fallback_to_original")
+                            warnings.append("flux_inpainting_failed_fallback_to_original")
 
             # ── 11. 생성용 컷아웃 ─────────────────────────────────────────
             generation_cutout_path = None
