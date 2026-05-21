@@ -25,17 +25,17 @@ def _get_pipe():
 
 
 _FURNITURE_PROMPTS: dict[str, str] = {
-    "sofa":     "clean sofa seat with smooth fabric upholstery, no objects placed on it",
-    "chair":    "clean chair seat with smooth fabric, no objects on it",
-    "desk":     "clean empty desk surface with smooth texture, nothing on top",
-    "table":    "clean empty table surface with smooth texture, nothing on top",
-    "bed":      "clean bed with smooth bedding, no objects placed on it",
-    "wardrobe": "clean wardrobe surface, no objects in front of it",
-    "drawer":   "clean drawer surface, no objects in front of it",
-    "shelf":    "clean shelf with smooth surface, no objects blocking it",
+    "sofa":     "empty fabric sofa cushions, smooth upholstery surface, matching the existing sofa texture and color, photorealistic, consistent lighting with the rest of the scene",
+    "chair":    "empty chair seat with smooth fabric, matching the existing chair texture and color, photorealistic, consistent lighting",
+    "desk":     "empty desk surface, smooth wood texture, matching the existing desk material and color, photorealistic, consistent lighting",
+    "table":    "empty table surface, smooth texture, matching the existing table material and color, photorealistic, consistent lighting",
+    "bed":      "empty bed with smooth flat bedding, matching the existing sheet texture and color, photorealistic, consistent lighting",
+    "wardrobe": "empty floor in front of wardrobe, matching the existing floor texture, photorealistic, consistent lighting",
+    "drawer":   "empty drawer front surface, smooth texture, matching the existing material and color, photorealistic, consistent lighting",
+    "shelf":    "empty shelf with smooth surface, matching the existing shelf texture and color, photorealistic, consistent lighting",
 }
 
-_DEFAULT_PROMPT = "clean furniture surface, smooth texture, no objects placed on or in front of it"
+_DEFAULT_PROMPT = "empty clean furniture surface, smooth texture matching the surroundings, photorealistic, consistent lighting"
 
 
 def _get_prompt(furniture_type: str) -> str:
@@ -47,15 +47,20 @@ def inpaint_with_flux(
     mask_path: Path,
     output_path: Path,
     furniture_type: str = "",
-    num_inference_steps: int = 28,
+    num_inference_steps: int = 50,
     guidance_scale: float = 30.0,
+    mask_dilation_px: int = 15,
+    seed: int = 42,
 ) -> dict:
     """Flux-Fill 인페인팅 후 BrushNet 스타일로 원본에 합성합니다.
 
-    1. Flux-Fill: 원본 이미지 + 마스크 → 마스크 영역 인페인팅
-    2. BrushNet composite: 마스크 내부만 Flux 결과로 교체, 나머지는 원본 유지
+    1. Mask preprocessing: 이진화 + dilation으로 객체 그림자/경계까지 포함
+    2. Flux-Fill: 원본 이미지 + 마스크 → 마스크 영역 인페인팅
+    3. BrushNet composite: hard mask로 마스크 내부만 Flux 결과로 교체
     """
-    from PIL import Image
+    import numpy as np
+    import torch
+    from PIL import Image, ImageFilter
 
     BASE_WARNINGS = [
         "inpainting_used",
@@ -72,11 +77,30 @@ def inpaint_with_flux(
         mask = Image.open(mask_path).convert("L")
         w, h = image.size
 
+        # 마스크 강제 이진화 (anti-aliasing/회색 픽셀 제거)
+        mask_arr = np.array(mask)
+        mask_bin = (mask_arr > 127).astype(np.uint8) * 255
+        mask = Image.fromarray(mask_bin, mode="L")
+
+        # Dilation: 객체 경계 + 그림자/잔상 영역까지 포함
+        if mask_dilation_px > 0:
+            # MaxFilter size는 홀수여야 하며 대략 2*radius+1
+            filter_size = max(3, mask_dilation_px * 2 + 1)
+            if filter_size % 2 == 0:
+                filter_size += 1
+            mask = mask.filter(ImageFilter.MaxFilter(size=filter_size))
+
         # Flux는 8의 배수 해상도 필요
         w8 = (w // 8) * 8
         h8 = (h // 8) * 8
-        image_input = image.resize((w8, h8))
-        mask_input = mask.resize((w8, h8))
+        # 이미지: 고품질 LANCZOS, 마스크: NEAREST 후 재이진화로 hard edge 유지
+        image_input = image.resize((w8, h8), Image.LANCZOS)
+        mask_input = mask.resize((w8, h8), Image.NEAREST)
+        mask_input_arr = np.array(mask_input)
+        mask_input_arr = (mask_input_arr > 127).astype(np.uint8) * 255
+        mask_input = Image.fromarray(mask_input_arr, mode="L")
+
+        generator = torch.Generator(device="cuda").manual_seed(seed)
 
         result = pipe(
             prompt=prompt,
@@ -86,14 +110,20 @@ def inpaint_with_flux(
             width=w8,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,
+            generator=generator,
         ).images[0]
 
         # 원본 크기로 복원
-        result = result.resize((w, h))
+        result = result.resize((w, h), Image.LANCZOS)
 
-        # BrushNet compositing: 마스크 내부만 Flux 결과로, 나머지는 원본 유지
+        # 합성용 hard mask (이진) + 가장자리만 살짝 부드럽게 (자연스러운 블렌딩)
+        hard_mask_arr = (np.array(mask) > 127).astype(np.uint8) * 255
+        hard_mask = Image.fromarray(hard_mask_arr, mode="L")
+        # 1~2px 정도의 미세한 블러로 경계 자연스럽게
+        composite_mask = hard_mask.filter(ImageFilter.GaussianBlur(radius=1.5))
+
         composite = image.copy()
-        composite.paste(result, mask=mask)
+        composite.paste(result, mask=composite_mask)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         composite.save(output_path)
