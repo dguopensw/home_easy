@@ -38,5 +38,5 @@ fi
 echo ""
 echo "✅ Setup complete."
 echo ""
-echo "서버 실행:"
-echo "  cd $BACKEND_DIR && uvicorn main:app --host 0.0.0.0 --port 8000"
+echo "서버 실행 방법: home_easy/backend 디렉토리에서 아래 명령어를 실행하세요. 포트번호는 필요에 따라 조정 가능합니다.(런팟에서 열어둔 포트로 접속설정해야 합니다)"
+echo " uvicorn main:app --host 0.0.0.0 --port 8000"
