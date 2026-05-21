@@ -5,6 +5,7 @@ BACKEND_DIR="$(cd "$(dirname "$0")" && pwd)"
 SAM3_DIR="/opt/sam3"
 
 echo "=== [1/4] Setting up PostgreSQL ==="
+apt-get update -y > /dev/null 2>&1
 apt-get install -y postgresql > /dev/null 2>&1
 service postgresql start
 su - postgres -c "psql -c \"ALTER USER postgres PASSWORD 'postgres';\"" 2>/dev/null || true
