@@ -28,7 +28,7 @@ def inpaint_with_flux(
     image_path: Path,
     mask_path: Path,
     output_path: Path,
-    prompt: str = "",
+    prompt: str = "clean furniture, remove objects, empty clean background, no items on furniture",
     num_inference_steps: int = 28,
     guidance_scale: float = 30.0,
 ) -> dict:
