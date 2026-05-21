@@ -11,7 +11,7 @@ from core import _core, OUTPUT_DIR
 from services.crawling_service import CrawlingService
 from services.image_selector import ImageSelectorService
 from services.furniture_analysis_service import FurnitureAnalysisService
-from services.segmentation_service import SegmentationService, get_masking_family
+from services.segmentation_service import SegmentationService
 from services.inpainting_service import InpaintingService
 from services.dimension_estimator import DimensionEstimatorService
 
