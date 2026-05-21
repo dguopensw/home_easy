@@ -1,4 +1,9 @@
-"""nanobanana_ratio_project의 app 모듈(_core)을 초기화하고 공유 경로를 설정합니다."""
+"""공유 경로 및 _core 초기화.
+
+SEGMENTATION_PROJECT_DIR은 SAM3 segmentation 모듈(nanobanana_ratio_project 등)의
+위치를 가리킵니다. sys.path에 추가해 app_core 내부의 `from segmentation import ...`가
+동작하도록 합니다.
+"""
 from __future__ import annotations
 
 import os
@@ -21,16 +26,17 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 SEGMENTATION_PROJECT_DIR = Path(
-    os.environ.get("SEGMENTATION_PROJECT_DIR", _PROJECT_ROOT / "nanobanana_ratio_project")
+    os.environ.get("SEGMENTATION_PROJECT_DIR", _BACKEND_DIR / "segmentation_module")
 ).expanduser()
 
+# SAM3 segmentation 모듈을 import 가능하게 경로 추가
 sys.path.insert(0, str(SEGMENTATION_PROJECT_DIR))
 
-import app as _core  # noqa: E402
+import app_core as _core  # noqa: E402
 _core.load_runtime_environment()
 
 OUTPUT_DIR = _BACKEND_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-# dahoo_fri/lama_inpaint_worker.py 경로 (LaMa subprocess 워커)
-LAMA_WORKER_PATH = _PROJECT_ROOT / "dahoo_fri" / "lama_inpaint_worker.py"
+# LaMa subprocess 워커 경로
+LAMA_WORKER_PATH = _BACKEND_DIR / "lama_inpaint_worker.py"
