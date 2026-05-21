@@ -33,3 +33,9 @@ regex
 
 # LaMa inpainting
 simple-lama-inpainting
+
+# Flux-Fill inpainting
+diffusers
+transformers
+accelerate
+sentencepiece
