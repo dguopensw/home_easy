@@ -1,13 +1,36 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
+from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core import OUTPUT_DIR
 from database import get_db
 
 router = APIRouter()
 
 
-@router.get("/{job_id}")
+@router.get("/output/{job_id}/{filename}")
+def serve_output(job_id: str, filename: str):
+    """파이프라인 출력 파일(이미지 등)을 제공합니다."""
+    safe_job_id = Path(job_id).name
+    safe_filename = Path(filename).name
+    file_path = OUTPUT_DIR / safe_job_id / safe_filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(str(file_path))
+
+
+@router.get("/job/{job_id}")
 async def get_furniture(job_id: str, db: AsyncSession = Depends(get_db)):
-    # TODO: job_id로 DB 조회 후 Job 결과 반환
-    # 반환 예시: {"job_id": "...", "status": "completed", "glb_url": "...", "dimensions": {...}}
-    raise NotImplementedError
+    """job_id로 Job 결과 반환."""
+    import json
+
+    # "output" 예약어는 파일 서빙 경로와 충돌하므로 거부
+    if job_id == "output":
+        raise HTTPException(status_code=400, detail="Invalid job_id")
+
+    result_file = OUTPUT_DIR / job_id / "result.json"
+    if not result_file.exists():
+        raise HTTPException(status_code=404, detail="Job not found")
+    data = json.loads(result_file.read_text(encoding="utf-8"))
+    return data
