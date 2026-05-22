@@ -1,7 +1,12 @@
+import json
+import os
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+import requests
 
+from core import OUTPUT_DIR
 from services.pipeline_service import PipelineService
 
 router = APIRouter()
@@ -37,11 +42,48 @@ async def start_generation(url: str):
 @router.get("/gen/status/{job_id}")
 async def get_generation_status(job_id: str):
     """(레거시 호환) 작업 상태 조회."""
-    from core import OUTPUT_DIR
-    import json
-
     result_file = OUTPUT_DIR / job_id / "result.json"
     if not result_file.exists():
         raise HTTPException(status_code=404, detail="Job not found")
+
     data = json.loads(result_file.read_text(encoding="utf-8"))
+    model_generation = data.get("model_generation") or {}
+
+    if model_generation.get("status") == "processing":
+        trellis_base_url = os.getenv("TRELLIS_BASE_URL", "").rstrip("/")
+        trellis_job_id = model_generation.get("trellis_job_id") or job_id
+
+        if trellis_base_url:
+            try:
+                response = requests.get(
+                    f"{trellis_base_url}/status/{trellis_job_id}",
+                    timeout=10,
+                )
+                response.raise_for_status()
+                trellis_status = response.json()
+                status = trellis_status.get("status")
+
+                if status == "completed":
+                    model_generation.update({
+                        "status": "completed",
+                        "glb_url": trellis_status.get("glb_url"),
+                        "error": None,
+                    })
+                elif status == "failed":
+                    model_generation.update({
+                        "status": "failed",
+                        "error": trellis_status.get("error", "TRELLIS generation failed"),
+                    })
+                elif status:
+                    model_generation["status"] = status
+
+                data["model_generation"] = model_generation
+                result_file.write_text(
+                    json.dumps(data, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+            except Exception as e:
+                model_generation["last_status_error"] = str(e)
+                data["model_generation"] = model_generation
+
     return JSONResponse(content=data)

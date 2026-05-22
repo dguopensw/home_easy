@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import requests
 import shutil
 import uuid
 from pathlib import Path
@@ -500,6 +502,56 @@ class PipelineService:
                     if generation_mask_path and generation_mask_path.exists() else None,
             }
 
+            trellis_base_url = os.getenv("TRELLIS_BASE_URL", "").rstrip("/")
+            backend_public_url = os.getenv("BACKEND_PUBLIC_URL", "").rstrip("/")
+
+            model_generation = {
+                "status": "skipped",
+                "trellis_job_id": job_id,
+                "input_file": None,
+                "image_url": None,
+                "glb_url": None,
+                "error": None,
+            }
+
+            trellis_input_file = None
+            if generation_cutout_path and generation_cutout_path.exists():
+                trellis_input_file = "06_generation_cutout.png"
+            elif final_cutout_path.exists():
+                trellis_input_file = "03_final_cutout.png"
+
+            if trellis_input_file and trellis_base_url and backend_public_url:
+                image_url = (
+                    f"{backend_public_url}/api/furniture/output/"
+                    f"{job_id}/{trellis_input_file}"
+                )
+                try:
+                    response = requests.post(
+                        f"{trellis_base_url}/generate",
+                        json={"job_id": job_id, "image_url": image_url},
+                        timeout=15,
+                    )
+                    response.raise_for_status()
+                    model_generation.update({
+                        "status": "processing",
+                        "input_file": trellis_input_file,
+                        "image_url": image_url,
+                    })
+                except Exception as e:
+                    model_generation.update({
+                        "status": "failed_to_start",
+                        "input_file": trellis_input_file,
+                        "image_url": image_url,
+                        "error": str(e),
+                    })
+                    logger.warning("TRELLIS generation start failed: job_id=%s error=%s", job_id, e)
+            elif trellis_input_file:
+                model_generation.update({
+                    "status": "not_configured",
+                    "input_file": trellis_input_file,
+                    "error": "TRELLIS_BASE_URL or BACKEND_PUBLIC_URL is missing",
+                })
+
             result = {
                 "job_id": job_id,
                 "pipeline_version": "service_v3_sam3_only",
@@ -520,6 +572,7 @@ class PipelineService:
                 "generation_cutout_quality": generation_cutout_quality,
                 "final_decision": final_decision,
                 "files": files,
+                "model_generation": model_generation,
                 "sam3_obstacle_info": sam3_info,
                 "sam3_contaminant_info": contaminant_sam3_info,
                 "debug": {
