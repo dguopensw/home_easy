@@ -94,22 +94,10 @@ def inpaint_with_banana(
         white = Image.new("RGB", (w, h), (255, 255, 255))
         hint_image.paste(white, mask=mask)
 
-        # PIL Image → bytes
-        buf = io.BytesIO()
-        hint_image.save(buf, format="PNG")
-        img_bytes = buf.getvalue()
-
         # Nano Banana API 호출
         response = client.models.generate_content(
             model=_MODEL,
-            contents=[
-                types.Content(
-                    parts=[
-                        types.Part.from_text(prompt),
-                        types.Part.from_bytes(data=img_bytes, mime_type="image/png"),
-                    ]
-                )
-            ],
+            contents=[prompt, hint_image],
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE", "TEXT"],
             ),
