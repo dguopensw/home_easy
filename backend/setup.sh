@@ -30,7 +30,7 @@ export SEGMENTATION_PROJECT_DIR="$BACKEND_DIR/segmentation_module"
 if [ ! -f "$BACKEND_DIR/.env" ]; then
     echo ""
     echo "⚠️  .env 파일이 없습니다. 아래 환경변수를 설정하세요:"
-    echo "    OPENAI_API_KEY, HF_TOKEN"
+    echo "    OPENAI_API_KEY, HF_TOKEN, GEMINI_API_KEY"
     echo "    cp $BACKEND_DIR/.env.example $BACKEND_DIR/.env 후 편집하거나 export로 직접 설정하세요."
     echo ""
 fi

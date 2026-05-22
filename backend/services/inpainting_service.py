@@ -22,8 +22,21 @@ class InpaintingService:
         furniture_type: str = "",
     ) -> dict:
         """Flux-Fill + BrushNet 스타일 합성으로 마스크 영역을 인페인팅합니다."""
-        from services.inpainting_flux import inpaint_with_flux
+        from inpainting.inpainting_flux import inpaint_with_flux
         return inpaint_with_flux(image_path, obstacle_mask_path, output_path, furniture_type=furniture_type)
+
+    # ── Nano Banana 인페인팅 ────────────────────────────────────────────
+
+    def inpaint_with_banana(
+        self,
+        image_path: Path,
+        obstacle_mask_path: Path,
+        output_path: Path,
+        furniture_type: str = "",
+    ) -> dict:
+        """Nano Banana (Gemini) + BrushNet 스타일 합성으로 마스크 영역을 인페인팅합니다."""
+        from inpainting.inpainting_banan import inpaint_with_banana
+        return inpaint_with_banana(image_path, obstacle_mask_path, output_path, furniture_type=furniture_type)
 
     # ── LaMa 인페인팅 ─────────────────────────────────────────────────────
 

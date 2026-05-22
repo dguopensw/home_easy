@@ -279,7 +279,7 @@ class PipelineService:
                             lama_src_mask = completion_mask_path
 
                         boundary_completed_path = job_dir / "08_boundary_completed.png"
-                        bc_result = self.inpainting.inpaint_with_flux(
+                        bc_result = self.inpainting.inpaint_with_banana(
                             original_path, lama_src_mask, boundary_completed_path,
                             furniture_type=furniture_type,
                         )
@@ -315,7 +315,7 @@ class PipelineService:
                         cv2.imwrite(str(union_mask_path), union_arr)
 
                         obs_removed_file = job_dir / "05_obstacle_removed.png"
-                        inpainting_info = self.inpainting.inpaint_with_flux(
+                        inpainting_info = self.inpainting.inpaint_with_banana(
                             original_path, union_mask_path, obs_removed_file,
                             furniture_type=furniture_type,
                         )
