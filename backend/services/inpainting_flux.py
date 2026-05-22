@@ -47,7 +47,7 @@ def inpaint_with_flux(
     mask_path: Path,
     output_path: Path,
     furniture_type: str = "",
-    num_inference_steps: int = 28,
+    num_inference_steps: int = 50,
     guidance_scale: float = 30.0,
     mask_dilation_px: int = 15,
     seed: int = 42,
