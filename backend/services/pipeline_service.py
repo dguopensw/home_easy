@@ -41,7 +41,12 @@ class PipelineService:
         self.inpainting = InpaintingService()
         self.dimension_estimator = DimensionEstimatorService()
 
-    def run_pipeline(self, url: str, selected_image_index: int) -> tuple[dict, int]:
+    def run_pipeline(
+        self,
+        url: str,
+        selected_image_index: int,
+        backend_public_url: str | None = None,
+    ) -> tuple[dict, int]:
         """SAM3-only 파이프라인 실행.
 
         흐름:
@@ -503,7 +508,7 @@ class PipelineService:
             }
 
             trellis_base_url = os.getenv("TRELLIS_BASE_URL", "").rstrip("/")
-            backend_public_url = os.getenv("BACKEND_PUBLIC_URL", "").rstrip("/")
+            backend_public_url = (backend_public_url or os.getenv("BACKEND_PUBLIC_URL", "")).rstrip("/")
 
             model_generation = {
                 "status": "skipped",
