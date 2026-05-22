@@ -1,7 +1,7 @@
 import json
 import os
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import requests
@@ -18,14 +18,28 @@ class ProcessRequest(BaseModel):
     selected_image_index: int = 0
 
 
+def _public_base_url(request: Request) -> str:
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or request.url.netloc
+    )
+    return f"{proto}://{host}".rstrip("/")
+
+
 @router.post("/process")
-def api_process(body: ProcessRequest):
+def api_process(body: ProcessRequest, request: Request):
     """전체 파이프라인 실행: 스크래핑 → 마스킹 → 치수 추정."""
     url = body.url.strip()
     if not url:
         raise HTTPException(status_code=400, detail="URL을 입력해주세요.")
 
-    result, status_code = _pipeline.run_pipeline(url, body.selected_image_index)
+    result, status_code = _pipeline.run_pipeline(
+        url,
+        body.selected_image_index,
+        backend_public_url=_public_base_url(request),
+    )
     return JSONResponse(content=result, status_code=status_code)
 
 
