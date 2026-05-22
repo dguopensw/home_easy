@@ -209,6 +209,18 @@
     .obstacle-box h4 { font-size: 14px; color: var(--warning); margin-bottom: 6px; }
     .obstacle-item { font-size: 13px; color: var(--text); padding: 4px 0; }
 
+    .url-value {
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+    .link-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-top: 12px; text-decoration: none;
+    }
+
     .error-box {
       background: #ffebee; border: 1px solid #ef9a9a;
       border-radius: 10px; padding: 16px;
@@ -358,6 +370,34 @@
       <div class="warnings-list" id="warningsList"></div>
     </div>
 
+    <!-- 3D Model Generation -->
+    <div class="card" id="modelGenerationCard">
+      <div class="card-title">3D 모델 생성 상태</div>
+      <div class="badge-row">
+        <span class="badge-status badge-na" id="modelGenerationStatus">대기 중</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">입력 이미지</span>
+        <span class="info-value" id="modelGenerationInput">-</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">전달 이미지 URL</span>
+        <span class="info-value url-value" id="modelGenerationImageUrl">-</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">GLB URL</span>
+        <span class="info-value url-value" id="modelGenerationGlbUrl">-</span>
+      </div>
+      <a
+        class="btn btn-primary link-btn hidden"
+        id="modelGenerationOpenBtn"
+        href="#"
+        target="_blank"
+        rel="noopener noreferrer"
+      >새 탭에서 GLB 열기</a>
+      <div class="warnings-list" id="modelGenerationError"></div>
+    </div>
+
     <!-- Debug (collapsible) -->
     <div class="card">
       <details>
@@ -377,6 +417,7 @@
   let selectedImageIndex = 0;
   let jobId = null;
   let isProcessing = false;
+  let modelGenerationPollTimer = null;
 
   const $ = id => document.getElementById(id);
   const show = id => $(id).classList.remove('hidden');
@@ -392,6 +433,7 @@
     const url = $('urlInput').value.trim();
     if (!url) { alert('URL을 입력해주세요.'); return; }
 
+    stopModelGenerationPolling();
     hide('scrapeError');
     hide('scrapeResults');
     hide('processLoading');
@@ -502,6 +544,7 @@
     if (!url) return;
 
     isProcessing = true;
+    stopModelGenerationPolling();
     hide('processError');
     hide('results');
     show('processLoading');
@@ -548,6 +591,94 @@
 
   function imgUrl(jid, filename) {
     return filename ? `${API}/api/furniture/output/${jid}/${filename}` : null;
+  }
+
+  function stopModelGenerationPolling() {
+    if (modelGenerationPollTimer) {
+      clearInterval(modelGenerationPollTimer);
+      modelGenerationPollTimer = null;
+    }
+  }
+
+  function modelStatusClass(status) {
+    if (status === 'completed') return 'badge-ok';
+    if (status === 'processing') return 'badge-info';
+    if (status === 'failed' || status === 'failed_to_start') return 'badge-warn';
+    return 'badge-na';
+  }
+
+  function modelStatusLabel(status) {
+    const labels = {
+      processing: '3D 생성 중',
+      completed: '3D 생성 완료',
+      failed: '3D 생성 실패',
+      failed_to_start: 'TRELLIS 요청 실패',
+      not_configured: 'TRELLIS 설정 누락',
+      skipped: '3D 생성 건너뜀',
+    };
+    return labels[status] || status || '대기 중';
+  }
+
+  function isTerminalModelGeneration(mg) {
+    const status = mg?.status;
+    if (status === 'completed') return Boolean(mg.glb_url);
+    return ['failed', 'failed_to_start', 'not_configured', 'skipped'].includes(status);
+  }
+
+  function renderModelGeneration(data, pollError = null) {
+    const mg = data.model_generation || {};
+    const status = mg.status || 'skipped';
+    const statusEl = $('modelGenerationStatus');
+    statusEl.className = `badge-status ${modelStatusClass(status)}`;
+    statusEl.textContent = modelStatusLabel(status);
+
+    $('modelGenerationInput').textContent = mg.input_file || '-';
+    $('modelGenerationImageUrl').textContent = mg.image_url || '-';
+    $('modelGenerationGlbUrl').textContent = mg.glb_url || '-';
+
+    const openBtn = $('modelGenerationOpenBtn');
+    if (mg.glb_url) {
+      openBtn.href = mg.glb_url;
+      show('modelGenerationOpenBtn');
+    } else {
+      openBtn.href = '#';
+      hide('modelGenerationOpenBtn');
+    }
+
+    const errorMessages = [];
+    if (mg.error) errorMessages.push(mg.error);
+    if (mg.last_status_error) errorMessages.push(`상태 확인 오류: ${mg.last_status_error}`);
+    if (pollError) errorMessages.push(`상태 확인 오류: ${pollError}`);
+    const errorEl = $('modelGenerationError');
+    errorEl.innerHTML = '';
+    errorMessages.forEach(msg => {
+      const div = document.createElement('div');
+      div.className = 'warning-item';
+      div.textContent = `⚠ ${msg}`;
+      errorEl.appendChild(div);
+    });
+  }
+
+  function startModelGenerationPolling(data) {
+    stopModelGenerationPolling();
+    const jid = data.job_id;
+    const mg = data.model_generation || {};
+    if (!jid || mg.status !== 'processing') return;
+
+    modelGenerationPollTimer = setInterval(async () => {
+      try {
+        const resp = await fetch(`${API}/api/gen/status/${jid}`);
+        const latest = await resp.json();
+        if (!resp.ok) throw new Error(latest.detail || latest.error || '상태 확인 실패');
+
+        renderModelGeneration(latest);
+        if (isTerminalModelGeneration(latest.model_generation)) {
+          stopModelGenerationPolling();
+        }
+      } catch (err) {
+        renderModelGeneration(data, err.message);
+      }
+    }, 2000);
   }
 
   function renderResults(data) {
@@ -753,9 +884,13 @@
       dimensions: data.dimensions,
       cutout_quality: data.cutout_quality,
       generation_cutout_quality: data.generation_cutout_quality,
+      model_generation: data.model_generation,
       final_decision: data.final_decision,
       debug: data.debug,
     }, null, 2);
+
+    renderModelGeneration(data);
+    startModelGenerationPolling(data);
   }
 </script>
 </body>
