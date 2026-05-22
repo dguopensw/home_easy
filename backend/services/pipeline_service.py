@@ -279,8 +279,9 @@ class PipelineService:
                             lama_src_mask = completion_mask_path
 
                         boundary_completed_path = job_dir / "08_boundary_completed.png"
-                        bc_result = self.inpainting.inpaint_with_lama(
+                        bc_result = self.inpainting.inpaint_with_flux(
                             original_path, lama_src_mask, boundary_completed_path,
+                            furniture_type=furniture_type,
                         )
 
                         if bc_result.get("status") == "done":
@@ -314,8 +315,9 @@ class PipelineService:
                         cv2.imwrite(str(union_mask_path), union_arr)
 
                         obs_removed_file = job_dir / "05_obstacle_removed.png"
-                        inpainting_info = self.inpainting.inpaint_with_lama(
+                        inpainting_info = self.inpainting.inpaint_with_flux(
                             original_path, union_mask_path, obs_removed_file,
+                            furniture_type=furniture_type,
                         )
 
                         if inpainting_info["status"] == "done":
@@ -324,7 +326,7 @@ class PipelineService:
                             if has_contaminants:
                                 warnings.append("generation_uses_contaminant_removed_image")
                         else:
-                            warnings.append("lama_inpainting_failed_fallback_to_original")
+                            warnings.append("flux_inpainting_failed_fallback_to_original")
 
             # ── 11. 생성용 컷아웃 ─────────────────────────────────────────
             generation_cutout_path = None
@@ -335,14 +337,38 @@ class PipelineService:
                 gen_cutout_file = job_dir / "06_generation_cutout.png"
                 gen_mask_file   = job_dir / "06_generation_mask.png"
 
-                if boundary_completion_used and cont_mask_file is not None:
-                    generation_mask_expansion_info = self.inpainting.expand_generation_mask_for_boundary_completion(
-                        final_mask_path, cont_mask_file, gen_mask_file,
-                        boundary_occlusion_info, masking_family=detected_family,
+                # 인페인팅된 이미지에 SAM 재실행 → 담요 등이 사라진 상태의 깨끗한 가구 마스크 생성
+                # BrushNet 합성 덕분에 마스크 영역 외에는 원본 픽셀이 그대로라 SAM 결과가 안정적
+                gen_raw_mask_file = job_dir / "06_generation_raw_mask.png"
+                gen_alpha_mask_file = job_dir / "06_generation_alpha_mask.png"
+
+                regen_info = self.segmentation.generate_sam3_furniture_mask_natural(
+                    obstacle_removed_path, furniture_type, gen_raw_mask_file,
+                    title=title, description=description,
+                )
+                generation_mask_expansion_info = {"method": "sam_rerun_on_inpainted", "status": regen_info.get("status")}
+
+                if regen_info.get("status") == "done":
+                    # 재실행된 마스크도 동일한 정제 파이프라인 적용
+                    regen_refine_info = self.segmentation.refine_mask_for_output(
+                        gen_raw_mask_file, furniture_type, detected_family, detected_subtype,
+                        gen_mask_file, gen_alpha_mask_file,
                     )
+                    if regen_refine_info["status"] != "done":
+                        shutil.copy2(str(gen_raw_mask_file), str(gen_mask_file))
+                        warnings.append("generation_mask_refine_failed_used_raw")
                     gen_mask_for_cutout = gen_mask_file
+                    warnings.append("generation_mask_regenerated_via_sam_on_inpainted")
                 else:
-                    shutil.copy2(str(final_mask_path), str(gen_mask_file))
+                    # SAM 재실행 실패 시 기존 방식으로 폴백
+                    warnings.append("generation_sam_rerun_failed_fallback_to_original_mask")
+                    if boundary_completion_used and cont_mask_file is not None:
+                        generation_mask_expansion_info = self.inpainting.expand_generation_mask_for_boundary_completion(
+                            final_mask_path, cont_mask_file, gen_mask_file,
+                            boundary_occlusion_info, masking_family=detected_family,
+                        )
+                    else:
+                        shutil.copy2(str(final_mask_path), str(gen_mask_file))
                     gen_mask_for_cutout = gen_mask_file
 
                 gen_build_info = self.segmentation.apply_mask_to_image(
