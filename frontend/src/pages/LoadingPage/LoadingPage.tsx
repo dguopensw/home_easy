@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { createSSEConnection, GenerationProgressEvent, ProgressStep } from '@/api/furniture'
 import StepList, { PipelineStep, STEPS } from './components/StepList'
 
 const STEP_PROGRESS: Record<PipelineStep, number> = {
@@ -13,8 +14,15 @@ const STEP_PROGRESS: Record<PipelineStep, number> = {
   error:          0,
 }
 
-const MOCK_STEPS: PipelineStep[] = ['crawling', 'image_select', 'preprocess', 'dimension', 'model_generate', 'complete']
-const STEP_INTERVAL_MS = 1200
+const STEP_MAP: Record<ProgressStep, PipelineStep> = {
+  crawling: 'crawling',
+  image_selection: 'image_select',
+  preprocessing: 'preprocess',
+  dimension: 'dimension',
+  model_generation: 'model_generate',
+  completed: 'complete',
+  error: 'error',
+}
 
 const CUBE_FACES = [
   { transform: 'translateZ(44px)',                 opacity: 1    },
@@ -31,11 +39,12 @@ export default function LoadingPage() {
   const jobId: string = state?.jobId ?? ''
   const sourceUrl: string = state?.sourceUrl ?? ''
 
-  const [stepIdx, setStepIdx] = useState(0)
+  const [currentStep, setCurrentStep] = useState<PipelineStep>('crawling')
+  const [progress, setProgress] = useState(5)
+  const [statusMessage, setStatusMessage] = useState('게시글 분석 중...')
+  const [errorMessage, setErrorMessage] = useState('')
   const [angle, setAngle] = useState(0)
 
-  const currentStep = MOCK_STEPS[Math.min(stepIdx, MOCK_STEPS.length - 1)]
-  const progress = STEP_PROGRESS[currentStep] ?? 0
   const currentStepData = STEPS.find((s) => s.key === currentStep)
 
   // 큐브 회전
@@ -50,21 +59,50 @@ export default function LoadingPage() {
       navigate('/home', { replace: true })
       return
     }
-    if (stepIdx >= MOCK_STEPS.length - 1) {
-      const timer = setTimeout(() => {
+
+    const events = createSSEConnection(jobId)
+
+    events.onmessage = (event) => {
+      const data = JSON.parse(event.data) as GenerationProgressEvent
+      const mappedStep = STEP_MAP[data.step]
+      if (mappedStep) setCurrentStep(mappedStep)
+      setProgress(data.progress ?? STEP_PROGRESS[mappedStep] ?? 0)
+      if (data.message) setStatusMessage(data.message)
+
+      if (data.step === 'completed') {
+        events.close()
         navigate('/preview', {
           state: {
-            glbUrl: '/example.glb',
-            dimensions: { width: 120, height: 85, depth: 60 },
+            glbUrl: data.glb_url,
+            dimensions: data.dimensions
+              ? {
+                  width: data.dimensions.width,
+                  height: data.dimensions.height,
+                  depth: data.dimensions.depth,
+                }
+              : { width: 0, height: 0, depth: 0 },
             sourceUrl,
           },
         })
-      }, 600)
-      return () => clearTimeout(timer)
+      }
+
+      if (data.step === 'error') {
+        events.close()
+        setCurrentStep('error')
+        setProgress(0)
+        setErrorMessage(data.message || '3D 모델 생성에 실패했습니다.')
+      }
     }
-    const timer = setTimeout(() => setStepIdx((i) => i + 1), STEP_INTERVAL_MS)
-    return () => clearTimeout(timer)
-  }, [stepIdx, jobId, navigate])
+
+    events.onerror = () => {
+      events.close()
+      setCurrentStep('error')
+      setProgress(0)
+      setErrorMessage('진행 상태 연결이 끊어졌습니다.')
+    }
+
+    return () => events.close()
+  }, [jobId, navigate, sourceUrl])
 
   return (
     <div className="min-h-screen bg-[#1A130C] flex flex-col items-center justify-center px-[28px] relative overflow-hidden">
@@ -119,7 +157,7 @@ export default function LoadingPage() {
         <div className="text-center">
           <h2 className="text-[22px] font-extrabold text-white mb-[6px]">3D 모델 생성 중</h2>
           <p className="text-[13px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            게시글 분석 중…
+            {errorMessage || statusMessage}
           </p>
         </div>
 

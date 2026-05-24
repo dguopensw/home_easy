@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import NavBar from '@/components/NavBar'
+import { startGeneration } from '@/api/furniture'
 
 const SAMPLES = [
   { label: '당근마켓 예시', icon: '🥕', url: 'https://www.daangn.com/articles/12345678' },
@@ -11,6 +12,7 @@ export default function UrlInputPage() {
   const [url, setUrl] = useState('')
   const [focused, setFocused] = useState(false)
   const [shake, setShake] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const triggerShake = () => {
@@ -18,13 +20,25 @@ export default function UrlInputPage() {
     setTimeout(() => setShake(false), 400)
   }
 
-  const handleSubmit = () => {
-    if (!url.trim()) {
+  const handleSubmit = async () => {
+    const trimmedUrl = url.trim()
+    if (!trimmedUrl) {
       triggerShake()
       inputRef.current?.focus()
       return
     }
-    navigate('/loading', { state: { jobId: 'mock-job-id', sourceUrl: url } })
+    if (submitting) return
+
+    setSubmitting(true)
+    try {
+      const { job_id } = await startGeneration(trimmedUrl)
+      navigate('/loading', { state: { jobId: job_id, sourceUrl: trimmedUrl } })
+    } catch {
+      triggerShake()
+      inputRef.current?.focus()
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -119,15 +133,16 @@ export default function UrlInputPage() {
       <div className="px-[24px] pb-[40px] pt-[24px] flex-shrink-0">
         <button
           onClick={handleSubmit}
+          disabled={submitting}
           data-testid="url-input-submit-button"
           className="w-full py-[17px] rounded-[18px] text-white text-[16px] font-bold flex items-center justify-center gap-[8px] transition-opacity"
           style={{
             background: 'linear-gradient(135deg, var(--color-accent), #E8A070)',
             boxShadow: '0 6px 24px color-mix(in srgb, var(--color-accent) 33%, transparent)',
-            opacity: url.trim() ? 1 : 0.5,
+            opacity: url.trim() && !submitting ? 1 : 0.5,
           }}
         >
-          3D 모델 생성하기
+          {submitting ? '요청 중...' : '3D 모델 생성하기'}
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
             <line x1="5" y1="12" x2="19" y2="12" />
             <polyline points="12 5 19 12 12 19" />
