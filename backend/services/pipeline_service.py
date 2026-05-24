@@ -8,6 +8,7 @@ import requests
 import shutil
 import uuid
 from pathlib import Path
+from typing import Callable
 
 from core import _core, OUTPUT_DIR
 from services.crawling_service import CrawlingService
@@ -18,6 +19,7 @@ from services.inpainting_service import InpaintingService
 from services.dimension_estimator import DimensionEstimatorService
 
 logger = logging.getLogger(__name__)
+ProgressCallback = Callable[[dict], None]
 
 
 def _resolve_type_source(furniture_info: dict) -> str:
@@ -46,6 +48,8 @@ class PipelineService:
         url: str,
         selected_image_index: int,
         backend_public_url: str | None = None,
+        job_id: str | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> tuple[dict, int]:
         """SAM3-only 파이프라인 실행.
 
@@ -64,10 +68,22 @@ class PipelineService:
         12. 치수 추정
         13. 품질 평가 및 최종 판단
         """
-        job_id = uuid.uuid4().hex[:8]
+        job_id = job_id or uuid.uuid4().hex[:8]
         job_dir = OUTPUT_DIR / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
         warnings: list[str] = []
+
+        def emit(step: str, progress: int, message: str | None = None) -> None:
+            if progress_callback is None:
+                return
+            event = {
+                "step": step,
+                "status": "completed",
+                "progress": progress,
+            }
+            if message:
+                event["message"] = message
+            progress_callback(event)
 
         masking_strategy = {
             "primary": "sam3_only",
@@ -100,6 +116,7 @@ class PipelineService:
 
             title = scraped.get("title", "")
             description = scraped.get("description", "")
+            emit("crawling", 20, "게시글 크롤링 완료")
 
             # ── 2. 선택 이미지 다운로드 ───────────────────────────────────
             idx = selected_image_index if 0 <= selected_image_index < len(image_urls) else 0
@@ -108,6 +125,7 @@ class PipelineService:
                 _core.download_image(image_urls[idx], original_path)
             except Exception as e:
                 return {"error": f"이미지 다운로드 실패: {e}", "job_id": job_id}, 500
+            emit("image_selection", 35, "최적 이미지 선정 완료")
 
             # ── 3. 가구 종류 추론 ─────────────────────────────────────────
             furniture_info = self.furniture_analysis.infer_furniture_type(
@@ -399,12 +417,14 @@ class PipelineService:
                 cutout_quality = self.segmentation.evaluate_cutout_quality(
                     final_mask_path, furniture_type
                 )
+            emit("preprocessing", 70, "배경 제거 및 전처리 완료")
 
             # ── 13. 치수 추정 ─────────────────────────────────────────────
             meas_source = measurement_path if measurement_path.exists() else original_path
             dimensions = self.dimension_estimator.estimate_dimensions(
                 meas_source, title, description, furniture_type, listing_dims
             )
+            emit("dimension", 80, "치수 측정 완료")
 
             dim_confidence = dimensions.get("confidence", "low")
             if dim_confidence == "low":
