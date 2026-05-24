@@ -329,7 +329,21 @@
   <div id="scrapeLoading" class="card hidden">
     <div class="loading-wrap">
       <div class="spinner"></div>
-      <div class="loading-label">상품 정보를 가져오는 중...</div>
+      <div class="loading-label" id="scrapeLoadingLabel">상품 정보를 가져오는 중...</div>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-head">
+        <span id="scrapeProgressStep">대기 중</span>
+        <span id="scrapeProgressValue">0%</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="scrapeProgressFill"></div>
+      </div>
+      <div class="progress-steps" id="scrapeProgressSteps"></div>
+      <details>
+        <summary>수신한 진행 이벤트 보기</summary>
+        <pre class="progress-raw" id="scrapeProgressRaw"></pre>
+      </details>
     </div>
   </div>
 
@@ -517,6 +531,7 @@
     { key: 'dimension', label: '치수 측정' },
     { key: 'model_generation', label: '3D 모델 생성' },
   ];
+  const SCRAPE_STEPS = PROCESS_STEPS.slice(0, 2);
 
   const $ = id => document.getElementById(id);
   const show = id => $(id).classList.remove('hidden');
@@ -540,6 +555,13 @@
     hide('processError');
     hide('results');
     show('scrapeLoading');
+    resetScrapeProgressSteps();
+    renderScrapeProgressEvent({
+      step: 'crawling',
+      status: 'processing',
+      progress: 5,
+      message: '게시글 크롤링 중...',
+    });
     $('scrapeBtn').disabled = true;
 
     try {
@@ -551,12 +573,29 @@
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || data.error || '스크래핑 실패');
       scrapeData = data;
+      renderScrapeProgressEvent({
+        step: 'crawling',
+        status: 'completed',
+        progress: 20,
+        message: '게시글 크롤링 완료',
+      });
+      renderScrapeProgressEvent({
+        step: 'image_selection',
+        status: 'completed',
+        progress: 35,
+        message: '최적 이미지 선정 완료',
+      });
       renderScrapeResults(data);
     } catch (err) {
+      renderScrapeProgressEvent({
+        step: 'error',
+        status: 'error',
+        progress: 0,
+        message: err.message,
+      });
       $('scrapeErrorMsg').textContent = `오류: ${err.message}`;
       show('scrapeError');
     } finally {
-      hide('scrapeLoading');
       $('scrapeBtn').disabled = false;
     }
   }
@@ -632,6 +671,74 @@
 
   function updateSelectedLabel() {
     $('selectedLabel').textContent = `선택된 이미지: #${selectedImageIndex}`;
+  }
+
+  function resetScrapeProgressSteps() {
+    $('scrapeLoadingLabel').textContent = '상품 정보를 가져오는 중...';
+    $('scrapeProgressStep').textContent = '대기 중';
+    $('scrapeProgressValue').textContent = '0%';
+    $('scrapeProgressFill').style.width = '0%';
+    $('scrapeProgressRaw').textContent = '';
+
+    const stepsEl = $('scrapeProgressSteps');
+    stepsEl.innerHTML = '';
+    SCRAPE_STEPS.forEach(step => {
+      const row = document.createElement('div');
+      row.className = 'progress-step';
+      row.dataset.step = step.key;
+      row.innerHTML = `
+        <div class="progress-step-main">
+          <span class="progress-dot"></span>
+          <div>
+            <div class="progress-step-label">${step.label}</div>
+            <div class="progress-step-message">대기 중</div>
+          </div>
+        </div>
+        <span class="progress-step-status">대기</span>
+      `;
+      stepsEl.appendChild(row);
+    });
+  }
+
+  function renderScrapeProgressEvent(event) {
+    const progress = Number(event.progress ?? 0);
+    const step = event.step || 'unknown';
+    const message = event.message || step;
+
+    $('scrapeLoadingLabel').textContent = message;
+    $('scrapeProgressStep').textContent = step;
+    $('scrapeProgressValue').textContent = `${progress}%`;
+    $('scrapeProgressFill').style.width = `${Math.max(0, Math.min(progress, 100))}%`;
+    $('scrapeProgressRaw').textContent += `${JSON.stringify(event, null, 2)}\n\n`;
+
+    SCRAPE_STEPS.forEach(stepDef => {
+      const row = document.querySelector(`#scrapeProgressSteps .progress-step[data-step="${stepDef.key}"]`);
+      if (!row) return;
+      const messageEl = row.querySelector('.progress-step-message');
+      const statusEl = row.querySelector('.progress-step-status');
+      const eventIdx = SCRAPE_STEPS.findIndex(s => s.key === step);
+      const rowIdx = SCRAPE_STEPS.findIndex(s => s.key === stepDef.key);
+
+      row.classList.remove('done', 'active', 'error');
+      if (event.status === 'error') {
+        if (rowIdx === Math.max(eventIdx, 0)) {
+          row.classList.add('error');
+          messageEl.textContent = message;
+          statusEl.textContent = '오류';
+        }
+      } else if (event.status === 'processing' && rowIdx === eventIdx) {
+        row.classList.add('active');
+        messageEl.textContent = message;
+        statusEl.textContent = '진행 중';
+      } else if (rowIdx < eventIdx || (rowIdx === eventIdx && event.status === 'completed')) {
+        row.classList.add('done');
+        if (rowIdx === eventIdx) messageEl.textContent = message;
+        statusEl.textContent = '완료';
+      } else {
+        messageEl.textContent = '대기 중';
+        statusEl.textContent = '대기';
+      }
+    });
   }
 
   // ── Process ─────────────────────────────────────────────────────────────
@@ -716,6 +823,11 @@
     const message = event.message || step;
     if (step !== 'error' && step !== 'completed') {
       lastProcessStep = step;
+    } else if (
+      step === 'error' &&
+      /TRELLIS|3D 모델|glb|BACKEND_PUBLIC_URL/i.test(message)
+    ) {
+      lastProcessStep = 'model_generation';
     }
 
     $('processLoadingLabel').textContent = message;
@@ -725,7 +837,7 @@
     $('processProgressRaw').textContent += `${JSON.stringify(event, null, 2)}\n\n`;
 
     PROCESS_STEPS.forEach(stepDef => {
-      const row = document.querySelector(`.progress-step[data-step="${stepDef.key}"]`);
+      const row = document.querySelector(`#processProgressSteps .progress-step[data-step="${stepDef.key}"]`);
       if (!row) return;
       const messageEl = row.querySelector('.progress-step-message');
       const statusEl = row.querySelector('.progress-step-status');
@@ -763,8 +875,10 @@
     return data;
   }
 
-  function finishProcessing() {
-    hide('processLoading');
+  function finishProcessing(options = {}) {
+    if (options.hideProgress) {
+      hide('processLoading');
+    }
     $('processBtn').disabled = false;
     $('scrapeBtn').disabled = false;
     isProcessing = false;
@@ -794,13 +908,19 @@
           $('processErrorMsg').textContent = `오류: ${err.message}`;
           show('processError');
         } finally {
-          finishProcessing();
+          finishProcessing({ hideProgress: false });
         }
       } else if (data.step === 'error') {
         stopProcessEventSource();
         $('processErrorMsg').textContent = `오류: ${data.message || '처리 실패'}`;
         show('processError');
-        finishProcessing();
+        fetchJobResult(jid)
+          .then(result => {
+            renderResults(result);
+            show('results');
+          })
+          .catch(() => {})
+          .finally(() => finishProcessing({ hideProgress: false }));
       }
     };
 
@@ -808,7 +928,7 @@
       stopProcessEventSource();
       $('processErrorMsg').textContent = '오류: SSE 진행 상태 연결이 끊어졌습니다.';
       show('processError');
-      finishProcessing();
+      finishProcessing({ hideProgress: false });
     };
   }
 
