@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from core import _core
 from services.crawling_service import CrawlingService
 from services.image_selector import ImageSelectorService
+from services.scrape_store import scrape_store
 
 router = APIRouter()
 _crawling = CrawlingService()
@@ -39,7 +40,27 @@ def api_scrape(body: ScrapeRequest):
     listing_dims = _crawling.parse_listing_dimensions(title, description)
     listing_class = _core.classify_furniture_from_listing(title, description)
 
+    store_data = {
+        "url": url,
+        "title": title,
+        "description": description,
+        "price": scraped.get("price", ""),
+        "platform": scraped.get("platform", ""),
+        "images": image_urls,
+        "image_urls": image_urls,
+        "ai_recommended_image_index": image_ranking["recommended_index"],
+        "ranked_candidate_indices": image_ranking["ranked_candidate_indices"],
+        "image_reasoning": image_ranking.get("reasoning", {}),
+        "furniture_guess": {
+            "type": listing_class["furniture_type"],
+            "confidence": listing_class["confidence"],
+        },
+        "dimensions_from_listing": listing_dims,
+    }
+    scrape_id = scrape_store.create(store_data)
+
     return JSONResponse(content={
+        "scrape_id": scrape_id,
         "title": title,
         "description": description,
         "price": scraped.get("price", ""),
