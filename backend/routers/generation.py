@@ -13,6 +13,7 @@ from sse_starlette.sse import EventSourceResponse
 from core import OUTPUT_DIR
 from services.pipeline_service import PipelineService
 from services.progress_manager import progress_manager
+from services.scrape_store import scrape_store
 
 router = APIRouter()
 _pipeline = PipelineService()
@@ -20,6 +21,7 @@ _pipeline = PipelineService()
 
 class ProcessRequest(BaseModel):
     url: str = ""
+    scrape_id: str = ""
     selected_image_index: int = 0
 
 
@@ -123,6 +125,7 @@ def _run_process_job(
     job_id: str,
     body: ProcessRequest,
     backend_public_url: str,
+    scraped_data: dict | None = None,
 ) -> None:
     def progress_callback(event: dict) -> None:
         progress_manager.emit(job_id, event)
@@ -134,6 +137,7 @@ def _run_process_job(
             backend_public_url=backend_public_url,
             job_id=job_id,
             progress_callback=progress_callback,
+            scraped_data=scraped_data,
         )
         progress_manager.complete(job_id, result, status_code)
 
@@ -201,16 +205,24 @@ def start_process(
     background_tasks: BackgroundTasks,
 ):
     """전체 파이프라인을 백그라운드에서 시작하고 job_id를 즉시 반환합니다."""
-    url = body.url.strip()
+    scrape_id = body.scrape_id.strip()
+    scraped_data = scrape_store.get(scrape_id) if scrape_id else None
+
+    if scrape_id and scraped_data is None:
+        raise HTTPException(status_code=404, detail="Scrape result not found or expired")
+
+    url = body.url.strip() or (scraped_data or {}).get("url", "")
     if not url:
         raise HTTPException(status_code=400, detail="URL을 입력해주세요.")
 
+    body.url = url
     job_id = progress_manager.create_job()
     background_tasks.add_task(
         _run_process_job,
         job_id,
         body,
         _public_base_url(request),
+        scraped_data,
     )
     return {"job_id": job_id}
 

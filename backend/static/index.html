@@ -762,10 +762,13 @@
 
     try {
       $('processLoadingLabel').textContent = '백엔드 작업을 시작하는 중...';
+      const processBody = scrapeData?.scrape_id
+        ? { scrape_id: scrapeData.scrape_id, selected_image_index: selectedImageIndex }
+        : { url, selected_image_index: selectedImageIndex };
       const resp = await fetch(`${API}/api/process/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, selected_image_index: selectedImageIndex }),
+        body: JSON.stringify(processBody),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || data.error || '작업 시작 실패');

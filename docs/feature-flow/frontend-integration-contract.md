@@ -14,7 +14,7 @@
 1. 사용자가 게시글 URL 입력
 2. POST /api/scrape 호출
 3. 이미지 후보와 AI 추천 이미지 표시
-4. 사용자가 이미지 선택 후 POST /api/process/start 호출
+4. 사용자가 이미지 선택 후 scrape_id로 POST /api/process/start 호출
 5. 받은 job_id로 GET /api/process/status/{job_id} SSE 연결
 6. 단계별 진행상황 표시
 7. 완료 또는 실패 후 GET /api/furniture/job/{job_id}로 상세 결과 조회
@@ -53,6 +53,7 @@ Response 주요 키:
 
 ```json
 {
+  "scrape_id": "scrape_abc123",
   "title": "게시글 제목",
   "description": "게시글 설명",
   "price": "가격",
@@ -74,6 +75,7 @@ Response 주요 키:
 
 프론트 표시 기준:
 
+- `scrape_id`: 이후 처리 시작 요청에 넘길 ID. 같은 URL을 다시 크롤링하지 않기 위해 사용
 - `image_urls`: 화면에 보여줄 전체 후보 이미지 목록
 - `ai_recommended_image_index`: AI가 고른 대표 이미지 인덱스
 - `ranked_candidate_indices`: AI 추천 순위 표시용
@@ -124,6 +126,15 @@ Request:
 
 ```json
 {
+  "scrape_id": "scrape_abc123",
+  "selected_image_index": 0
+}
+```
+
+기존 호환용으로 아래 요청도 동작하지만, 새 프론트는 `scrape_id` 방식을 권장합니다.
+
+```json
+{
   "url": "https://...",
   "selected_image_index": 0
 }
@@ -138,6 +149,8 @@ Response:
 ```
 
 프론트는 `job_id`를 받은 직후 SSE에 연결합니다.
+
+`scrape_id`를 쓰면 `/api/process/start` 단계에서 URL을 다시 크롤링하지 않습니다. `/api/scrape`에서 저장해둔 제목, 설명, 이미지 URL 목록을 그대로 재사용합니다.
 
 ## 3. 진행상황 SSE
 
@@ -317,12 +330,12 @@ async function scrape(url) {
   return res.json();
 }
 
-async function startProcess(url, selectedImageIndex) {
+async function startProcess(scrapeResult, selectedImageIndex) {
   const res = await fetch(`${API}/process/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      url,
+      scrape_id: scrapeResult.scrape_id,
       selected_image_index: selectedImageIndex,
     }),
   });
@@ -377,6 +390,7 @@ http://localhost:4001/
 6. Network 탭에서 아래 요청 확인
    - `POST /api/process/start`
    - `GET /api/process/status/{job_id}`
+   - `process/start` 요청 body에 `scrape_id`가 포함되는지 확인
 7. 처리 단계 카드 확인
 8. 트릴리스가 꺼져 있으면 `3D 모델 생성` 단계만 오류로 표시되는지 확인
 9. 이전 단계 카드와 처리 결과 이미지가 화면에 유지되는지 확인

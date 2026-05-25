@@ -50,6 +50,7 @@ class PipelineService:
         backend_public_url: str | None = None,
         job_id: str | None = None,
         progress_callback: ProgressCallback | None = None,
+        scraped_data: dict | None = None,
     ) -> tuple[dict, int]:
         """SAM3-only 파이프라인 실행.
 
@@ -101,16 +102,18 @@ class PipelineService:
 
         try:
             # ── 1. 스크래핑 ───────────────────────────────────────────────
-            platform = _core.identify_platform(url)
+            scraped = scraped_data
+            platform = (scraped or {}).get("platform") or _core.identify_platform(url)
             if not platform:
                 return {"error": "당근마켓 또는 중고나라 URL만 지원합니다."}, 400
 
-            try:
-                scraped = self.crawling.scrape_listing(url)
-            except Exception as e:
-                return {"error": f"스크래핑 실패: {e}", "job_id": job_id}, 500
+            if scraped is None:
+                try:
+                    scraped = self.crawling.scrape_listing(url)
+                except Exception as e:
+                    return {"error": f"스크래핑 실패: {e}", "job_id": job_id}, 500
 
-            image_urls = scraped.get("images", [])
+            image_urls = scraped.get("images") or scraped.get("image_urls", [])
             if not image_urls:
                 return {"error": "이미지를 찾을 수 없습니다.", "job_id": job_id}, 400
 
