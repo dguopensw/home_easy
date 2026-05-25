@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import requests
 import shutil
 import uuid
 from pathlib import Path
+from typing import Callable
 
 from core import _core, OUTPUT_DIR
 from services.crawling_service import CrawlingService
@@ -16,6 +19,7 @@ from services.inpainting_service import InpaintingService
 from services.dimension_estimator import DimensionEstimatorService
 
 logger = logging.getLogger(__name__)
+ProgressCallback = Callable[[dict], None]
 
 
 def _resolve_type_source(furniture_info: dict) -> str:
@@ -39,7 +43,15 @@ class PipelineService:
         self.inpainting = InpaintingService()
         self.dimension_estimator = DimensionEstimatorService()
 
-    def run_pipeline(self, url: str, selected_image_index: int) -> tuple[dict, int]:
+    def run_pipeline(
+        self,
+        url: str,
+        selected_image_index: int,
+        backend_public_url: str | None = None,
+        job_id: str | None = None,
+        progress_callback: ProgressCallback | None = None,
+        scraped_data: dict | None = None,
+    ) -> tuple[dict, int]:
         """SAM3-only 파이프라인 실행.
 
         흐름:
@@ -57,10 +69,22 @@ class PipelineService:
         12. 치수 추정
         13. 품질 평가 및 최종 판단
         """
-        job_id = uuid.uuid4().hex[:8]
+        job_id = job_id or uuid.uuid4().hex[:8]
         job_dir = OUTPUT_DIR / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
         warnings: list[str] = []
+
+        def emit(step: str, progress: int, message: str | None = None) -> None:
+            if progress_callback is None:
+                return
+            event = {
+                "step": step,
+                "status": "completed",
+                "progress": progress,
+            }
+            if message:
+                event["message"] = message
+            progress_callback(event)
 
         masking_strategy = {
             "primary": "sam3_only",
@@ -78,21 +102,24 @@ class PipelineService:
 
         try:
             # ── 1. 스크래핑 ───────────────────────────────────────────────
-            platform = _core.identify_platform(url)
+            scraped = scraped_data
+            platform = (scraped or {}).get("platform") or _core.identify_platform(url)
             if not platform:
                 return {"error": "당근마켓 또는 중고나라 URL만 지원합니다."}, 400
 
-            try:
-                scraped = self.crawling.scrape_listing(url)
-            except Exception as e:
-                return {"error": f"스크래핑 실패: {e}", "job_id": job_id}, 500
+            if scraped is None:
+                try:
+                    scraped = self.crawling.scrape_listing(url)
+                except Exception as e:
+                    return {"error": f"스크래핑 실패: {e}", "job_id": job_id}, 500
 
-            image_urls = scraped.get("images", [])
+            image_urls = scraped.get("images") or scraped.get("image_urls", [])
             if not image_urls:
                 return {"error": "이미지를 찾을 수 없습니다.", "job_id": job_id}, 400
 
             title = scraped.get("title", "")
             description = scraped.get("description", "")
+            emit("crawling", 20, "게시글 크롤링 완료")
 
             # ── 2. 선택 이미지 다운로드 ───────────────────────────────────
             idx = selected_image_index if 0 <= selected_image_index < len(image_urls) else 0
@@ -101,6 +128,7 @@ class PipelineService:
                 _core.download_image(image_urls[idx], original_path)
             except Exception as e:
                 return {"error": f"이미지 다운로드 실패: {e}", "job_id": job_id}, 500
+            emit("image_selection", 35, "최적 이미지 선정 완료")
 
             # ── 3. 가구 종류 추론 ─────────────────────────────────────────
             furniture_info = self.furniture_analysis.infer_furniture_type(
@@ -392,12 +420,14 @@ class PipelineService:
                 cutout_quality = self.segmentation.evaluate_cutout_quality(
                     final_mask_path, furniture_type
                 )
+            emit("preprocessing", 70, "배경 제거 및 전처리 완료")
 
             # ── 13. 치수 추정 ─────────────────────────────────────────────
             meas_source = measurement_path if measurement_path.exists() else original_path
             dimensions = self.dimension_estimator.estimate_dimensions(
                 meas_source, title, description, furniture_type, listing_dims
             )
+            emit("dimension", 80, "치수 측정 완료")
 
             dim_confidence = dimensions.get("confidence", "low")
             if dim_confidence == "low":
@@ -500,6 +530,56 @@ class PipelineService:
                     if generation_mask_path and generation_mask_path.exists() else None,
             }
 
+            trellis_base_url = os.getenv("TRELLIS_BASE_URL", "").rstrip("/")
+            backend_public_url = (backend_public_url or os.getenv("BACKEND_PUBLIC_URL", "")).rstrip("/")
+
+            model_generation = {
+                "status": "skipped",
+                "trellis_job_id": job_id,
+                "input_file": None,
+                "image_url": None,
+                "glb_url": None,
+                "error": None,
+            }
+
+            trellis_input_file = None
+            if generation_cutout_path and generation_cutout_path.exists():
+                trellis_input_file = "06_generation_cutout.png"
+            elif final_cutout_path.exists():
+                trellis_input_file = "03_final_cutout.png"
+
+            if trellis_input_file and trellis_base_url and backend_public_url:
+                image_url = (
+                    f"{backend_public_url}/api/furniture/output/"
+                    f"{job_id}/{trellis_input_file}"
+                )
+                try:
+                    response = requests.post(
+                        f"{trellis_base_url}/generate",
+                        json={"job_id": job_id, "image_url": image_url},
+                        timeout=15,
+                    )
+                    response.raise_for_status()
+                    model_generation.update({
+                        "status": "processing",
+                        "input_file": trellis_input_file,
+                        "image_url": image_url,
+                    })
+                except Exception as e:
+                    model_generation.update({
+                        "status": "failed_to_start",
+                        "input_file": trellis_input_file,
+                        "image_url": image_url,
+                        "error": str(e),
+                    })
+                    logger.warning("TRELLIS generation start failed: job_id=%s error=%s", job_id, e)
+            elif trellis_input_file:
+                model_generation.update({
+                    "status": "not_configured",
+                    "input_file": trellis_input_file,
+                    "error": "TRELLIS_BASE_URL or BACKEND_PUBLIC_URL is missing",
+                })
+
             result = {
                 "job_id": job_id,
                 "pipeline_version": "service_v3_sam3_only",
@@ -520,6 +600,7 @@ class PipelineService:
                 "generation_cutout_quality": generation_cutout_quality,
                 "final_decision": final_decision,
                 "files": files,
+                "model_generation": model_generation,
                 "sam3_obstacle_info": sam3_info,
                 "sam3_contaminant_info": contaminant_sam3_info,
                 "debug": {

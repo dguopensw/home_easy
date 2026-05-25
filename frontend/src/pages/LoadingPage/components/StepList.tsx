@@ -13,8 +13,8 @@ export type PipelineStep =
 export const STEPS: { key: PipelineStep; label: string; icon: string; sub: string }[] = [
   { key: 'crawling',       label: '게시글 크롤링',    icon: '🔍', sub: '이미지 · 텍스트 · 치수 정보 수집' },
   { key: 'image_select',   label: '최적 이미지 선정', icon: '🤖', sub: 'GPT-4o Vision 분석 중' },
-  { key: 'dimension',      label: '치수 측정',        icon: '📐', sub: 'Metric3D 깊이 추정 · W×H×D 계산' },
   { key: 'preprocess',     label: '배경 제거·전처리', icon: '✂️', sub: 'SAM 세그멘테이션 · LaMa 인페인팅' },
+  { key: 'dimension',      label: '치수 측정',        icon: '📐', sub: 'Metric3D 깊이 추정 · W×H×D 계산' },
   { key: 'model_generate', label: '3D 모델 생성',     icon: '🧊', sub: 'TRELLIS 변환 중…' },
 ]
 
