@@ -127,15 +127,9 @@ class SegmentationService:
         if not object_names:
             object_names = ["obstacle on furniture" if mode == "major_obstacle" else "object on furniture"]
 
-        if mode == "generation_contaminant":
-            parts = []
-            for o in objects:
-                name = o.get("name", "object")
-                location = o.get("location", "")
-                parts.append(f"{name} {location}".strip() if location else name)
-            prompt_text = ". ".join(parts) + "." if parts else "object on furniture."
-        else:
-            prompt_text = ". ".join(object_names) + "."
+        # SAM3 paper requires short noun phrases — feed GPT names directly without location.
+        # Spatial info from GPT lives in result.json's contaminants[].location for display only.
+        prompt_text = ". ".join(object_names) + "."
 
         area_threshold = 0.35 if mode == "generation_contaminant" else 0.70
 
