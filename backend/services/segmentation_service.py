@@ -169,8 +169,13 @@ class SegmentationService:
             boxes = results.get("boxes")
             if boxes is None or len(boxes) == 0:
                 logger.warning("SAM3: no detections for: %s", prompt_text)
-                return {"status": "no_detections", "error": None, "mask_coverage": 0.0,
-                        "prompts_used": object_names, "prompt_text": prompt_text}
+                return {
+                    "status": "no_detections", "error": None, "mask_coverage": 0.0,
+                    "prompts_used": object_names, "prompt_text": prompt_text,
+                    "sam3_actual_prompts": list(
+                        getattr(gsam.processor, "_last_sam3_prompts", []) or []
+                    ),
+                }
 
             gsam.predictor.set_image(image_np)
             union_mask = np.zeros((h, w), dtype=np.uint8)
@@ -202,10 +207,13 @@ class SegmentationService:
                 union_mask = np.maximum(union_mask, mask)
                 obstacle_count += 1
 
+            sam3_actual_prompts = list(getattr(gsam.processor, "_last_sam3_prompts", []) or [])
+
             if obstacle_count == 0:
                 return {"status": "no_valid_detections", "error": None,
                         "mask_coverage": 0.0, "prompts_used": object_names,
-                        "prompt_text": prompt_text}
+                        "prompt_text": prompt_text,
+                        "sam3_actual_prompts": sam3_actual_prompts}
 
             output_mask_path.parent.mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(output_mask_path), union_mask)
@@ -222,6 +230,7 @@ class SegmentationService:
                 "object_count": obstacle_count,
                 "prompts_used": object_names,
                 "prompt_text": prompt_text,
+                "sam3_actual_prompts": sam3_actual_prompts,
                 "warnings": seg_warnings,
             }
 
