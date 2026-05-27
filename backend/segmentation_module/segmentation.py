@@ -90,10 +90,11 @@ class _ProcessorProxy:
 
         with ctx:
             for concept in concepts:
-                # Pass the full phrase (with location modifiers) to SAM3
-                # to see if it can leverage spatial cues from the prompt.
+                # Strip trailing location words — keep only the noun phrase
+                # e.g. "books left side middle shelf" → "books"
+                noun = _extract_noun(concept)
                 state = self._p.set_image(images)
-                state = self._p.set_text_prompt(prompt=concept, state=state)
+                state = self._p.set_text_prompt(prompt=noun, state=state)
                 if "boxes" in state and len(state["boxes"]) > 0:
                     all_boxes.append(state["boxes"])
                     all_scores.append(state["scores"])
