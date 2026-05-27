@@ -39,3 +39,6 @@ diffusers
 transformers
 accelerate
 sentencepiece
+
+# Nano Banana (Gemini) inpainting
+google-genai
