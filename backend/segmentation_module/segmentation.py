@@ -75,6 +75,7 @@ class _ProcessorProxy:
     def __init__(self, sam3_processor):
         self._p = sam3_processor
         self._last_state: dict | None = None
+        self._last_sam3_prompts: list[str] = []
 
     def __call__(self, images, text: str, return_tensors: str = "pt") -> dict:
         # Split GroundingDINO-style compound prompt ("obj1. obj2. obj3.")
@@ -84,6 +85,7 @@ class _ProcessorProxy:
             concepts = [text]
 
         all_boxes, all_scores, all_masks = [], [], []
+        self._last_sam3_prompts = []
 
         ctx = (torch.autocast("cuda", dtype=torch.bfloat16)
                if torch.cuda.is_available() else contextlib.nullcontext())
@@ -93,6 +95,7 @@ class _ProcessorProxy:
                 # Strip trailing location words — keep only the noun phrase
                 # e.g. "books left side middle shelf" → "books"
                 noun = _extract_noun(concept)
+                self._last_sam3_prompts.append(noun)
                 state = self._p.set_image(images)
                 state = self._p.set_text_prompt(prompt=noun, state=state)
                 if "boxes" in state and len(state["boxes"]) > 0:
