@@ -25,9 +25,12 @@ from PIL import Image
 
 # Location/direction words that follow the noun phrase in GPT-generated prompts.
 _LOCATION_WORDS = {
-    "left", "right", "top", "bottom", "front", "back", "side", "middle",
-    "upper", "lower", "corner", "center", "near", "on", "in", "at", "of",
+    "left", "right", "top", "bottom", "front", "back", "rear", "side", "middle",
+    "upper", "lower", "corner", "center", "central", "centered",
+    "leftmost", "rightmost", "topmost", "bottommost", "mid",
+    "near", "on", "in", "at", "of",
     "inside", "outside", "above", "below", "behind",
+    "area", "region", "section",
 }
 
 
