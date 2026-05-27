@@ -51,6 +51,7 @@ def api_scrape(body: ScrapeRequest):
         "ai_recommended_image_index": image_ranking["recommended_index"],
         "ranked_candidate_indices": image_ranking["ranked_candidate_indices"],
         "image_reasoning": image_ranking.get("reasoning", {}),
+        "product_candidate_hint": image_ranking.get("product_candidate_hint", {}),
         "furniture_guess": {
             "type": listing_class["furniture_type"],
             "confidence": listing_class["confidence"],
@@ -69,6 +70,7 @@ def api_scrape(body: ScrapeRequest):
         "ai_recommended_image_index": image_ranking["recommended_index"],
         "ranked_candidate_indices": image_ranking["ranked_candidate_indices"],
         "image_reasoning": {str(k): v for k, v in image_ranking.get("reasoning", {}).items()},
+        "product_candidate_hint": image_ranking.get("product_candidate_hint", {}),
         "furniture_guess": {
             "type": listing_class["furniture_type"],
             "confidence": listing_class["confidence"],

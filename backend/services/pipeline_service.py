@@ -121,6 +121,17 @@ class PipelineService:
             description = scraped.get("description", "")
             emit("crawling", 20, "게시글 크롤링 완료")
 
+            product_candidate_hint = scraped.get("product_candidate_hint")
+            if product_candidate_hint is None:
+                try:
+                    image_ranking = self.image_selector.choose_best_image(
+                        title, description, image_urls
+                    )
+                    product_candidate_hint = image_ranking.get("product_candidate_hint")
+                except Exception as e:
+                    logger.warning("product candidate hint extraction skipped: %s", e)
+                    product_candidate_hint = None
+
             # ── 2. 선택 이미지 다운로드 ───────────────────────────────────
             idx = selected_image_index if 0 <= selected_image_index < len(image_urls) else 0
             original_path = job_dir / "01_original.jpg"
@@ -425,7 +436,12 @@ class PipelineService:
             # ── 13. 치수 추정 ─────────────────────────────────────────────
             meas_source = measurement_path if measurement_path.exists() else original_path
             dimensions = self.dimension_estimator.estimate_dimensions(
-                meas_source, title, description, furniture_type, listing_dims
+                meas_source,
+                title,
+                description,
+                furniture_type,
+                listing_dims,
+                product_candidate_hint=product_candidate_hint,
             )
             emit("dimension", 80, "치수 측정 완료")
 
