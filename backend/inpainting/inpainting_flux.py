@@ -114,6 +114,18 @@ def inpaint_with_flux(
             generator=generator,
         ).images[0]
 
+        # 진단 로그: Flux 출력 크기 vs 원본 크기 비교 (stretch 진단용)
+        flux_w, flux_h = result.size
+        orig_aspect = w / h
+        flux_aspect = flux_w / flux_h
+        stretch_x = w / flux_w
+        stretch_y = h / flux_h
+        logger.info(
+            "Flux result: %dx%d (aspect %.3f) → resize to original %dx%d (aspect %.3f) | "
+            "stretch_x=%.3f stretch_y=%.3f",
+            flux_w, flux_h, flux_aspect, w, h, orig_aspect, stretch_x, stretch_y,
+        )
+
         # 원본 크기로 복원
         result = result.resize((w, h), Image.LANCZOS)
 
@@ -133,6 +145,14 @@ def inpaint_with_flux(
             "status": "done",
             "method": "flux_fill_brushnet_composite",
             "warnings": BASE_WARNINGS,
+            "diagnostics": {
+                "original_size": [w, h],
+                "flux_output_size": [flux_w, flux_h],
+                "original_aspect": round(orig_aspect, 3),
+                "flux_aspect": round(flux_aspect, 3),
+                "stretch_x": round(stretch_x, 3),
+                "stretch_y": round(stretch_y, 3),
+            },
         }
 
     except Exception as e:

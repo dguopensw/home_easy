@@ -156,6 +156,18 @@ def inpaint_with_banana(
         if result is None:
             raise RuntimeError("Nano Banana returned no image")
 
+        # 진단 로그: Banana 출력 크기 vs 원본 크기 비교 (stretch 진단용)
+        banana_w, banana_h = result.size
+        orig_aspect = w / h
+        banana_aspect = banana_w / banana_h
+        stretch_x = w / banana_w
+        stretch_y = h / banana_h
+        logger.info(
+            "Banana result: %dx%d (aspect %.3f) → resize to original %dx%d (aspect %.3f) | "
+            "stretch_x=%.3f stretch_y=%.3f",
+            banana_w, banana_h, banana_aspect, w, h, orig_aspect, stretch_x, stretch_y,
+        )
+
         # 원본 크기로 복원
         result = result.resize((w, h), Image.LANCZOS)
 
@@ -174,6 +186,14 @@ def inpaint_with_banana(
             "status": "done",
             "method": "nano_banana_brushnet_composite",
             "warnings": BASE_WARNINGS,
+            "diagnostics": {
+                "original_size": [w, h],
+                "banana_output_size": [banana_w, banana_h],
+                "original_aspect": round(orig_aspect, 3),
+                "banana_aspect": round(banana_aspect, 3),
+                "stretch_x": round(stretch_x, 3),
+                "stretch_y": round(stretch_y, 3),
+            },
         }
 
     except Exception as e:
