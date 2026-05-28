@@ -374,6 +374,7 @@ class PipelineService:
                 regen_info = self.segmentation.generate_sam3_furniture_mask_natural(
                     obstacle_removed_path, furniture_type, gen_raw_mask_file,
                     title=title, description=description,
+                    sam3_prompts=furniture_info.get("sam3_segmentation_prompts"),
                 )
                 generation_mask_expansion_info = {"method": "sam_rerun_on_inpainted", "status": regen_info.get("status")}
 
