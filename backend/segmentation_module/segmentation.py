@@ -1,15 +1,14 @@
 """SAM3-based segmentation module.
 
-Wraps SAM3 (facebook/sam3) to expose the interface expected by app.py:
+Direct SAM3 wrapper — call sites use:
   from segmentation import create_segmenter
-  segmenter = create_segmenter(device="cuda", prefer="grounded_sam")
+  segmenter = create_segmenter(device="cuda")
 
-The returned segmenter exposes:
-  - segmenter.processor  : callable + post_process_grounded_object_detection()
-  - segmenter.detector   : callable (no-op; processor handles detection)
-  - segmenter.predictor  : set_image() + predict()
-  - segmenter.device     : device string
-  - segmenter.segment()  : single-shot fallback
+The returned Sam3Segmenter exposes:
+  - segmenter.segment_text(image, prompts, threshold)  : text → boxes/masks
+  - segmenter.segment_box(image, box)                  : box  → masks
+  - segmenter.segment(image_path, furniture_type)      : single-shot fallback
+  - segmenter.device                                   : device string
 """
 
 from __future__ import annotations
@@ -62,150 +61,6 @@ class SegmentResult:
 
 
 # ---------------------------------------------------------------------------
-# Proxy: wraps Sam3Processor to look like a HF GroundingDINO processor
-# ---------------------------------------------------------------------------
-
-class _ProcessorProxy:
-    """Adapts Sam3Processor to the HF-style API used in app.py.
-
-    app.py call sequence:
-      inputs = gsam.processor(images=img, text=prompt, return_tensors="pt")
-      inputs = {k: v.to(device) for k, v in inputs.items()}   # move to device
-      outputs = gsam.detector(**inputs)
-      results = gsam.processor.post_process_grounded_object_detection(outputs, ...)
-    """
-
-    def __init__(self, sam3_processor):
-        self._p = sam3_processor
-        self._last_state: dict | None = None
-        self._last_sam3_prompts: list[str] = []
-
-    def __call__(self, images, text: str, return_tensors: str = "pt") -> dict:
-        # Split GroundingDINO-style compound prompt ("obj1. obj2. obj3.")
-        # and query SAM3 separately per concept, then merge detections.
-        concepts = [c.strip().rstrip(".") for c in text.split(".") if c.strip()]
-        if not concepts:
-            concepts = [text]
-
-        all_boxes, all_scores, all_masks = [], [], []
-        self._last_sam3_prompts = []
-
-        ctx = (torch.autocast("cuda", dtype=torch.bfloat16)
-               if torch.cuda.is_available() else contextlib.nullcontext())
-
-        with ctx:
-            for concept in concepts:
-                # Strip trailing location words — keep only the noun phrase
-                # e.g. "books left side middle shelf" → "books"
-                noun = _extract_noun(concept)
-                self._last_sam3_prompts.append(noun)
-                state = self._p.set_image(images)
-                state = self._p.set_text_prompt(prompt=noun, state=state)
-                if "boxes" in state and len(state["boxes"]) > 0:
-                    all_boxes.append(state["boxes"])
-                    all_scores.append(state["scores"])
-                    if "masks" in state and len(state["masks"]) > 0:
-                        all_masks.append(state["masks"])
-
-        if all_boxes:
-            merged = {
-                "boxes": torch.cat(all_boxes, dim=0),
-                "scores": torch.cat(all_scores, dim=0),
-            }
-            if all_masks:
-                merged["masks"] = torch.cat(all_masks, dim=0)
-            self._last_state = merged
-        else:
-            self._last_state = {}
-
-        return {"_dummy": torch.zeros(1)}
-
-    def post_process_grounded_object_detection(
-        self,
-        outputs,
-        input_ids=None,
-        threshold: float = 0.15,
-        text_threshold: float = 0.15,
-        target_sizes=None,
-    ) -> list[dict]:
-        state = self._last_state
-        if state is None or "boxes" not in state or len(state["boxes"]) == 0:
-            return [{"boxes": torch.zeros(0, 4), "labels": [], "scores": torch.zeros(0)}]
-
-        boxes = state["boxes"].cpu().float()    # (N, 4) XYXY pixel coords
-        scores = state["scores"].cpu().float()  # (N,)
-
-        keep = scores > threshold
-        boxes = boxes[keep]
-        scores = scores[keep]
-        labels = ["furniture"] * int(keep.sum())
-        return [{"boxes": boxes, "labels": labels, "scores": scores}]
-
-
-# ---------------------------------------------------------------------------
-# Proxy: wraps Sam3Processor to look like a SAM v1 SamPredictor
-# ---------------------------------------------------------------------------
-
-class _PredictorProxy:
-    """Adapts Sam3Processor to the SAM v1 predictor API used in app.py.
-
-    app.py call sequence:
-      gsam.predictor.set_image(image_np)
-      masks, scores, _ = gsam.predictor.predict(box=box, multimask_output=True)
-    """
-
-    def __init__(self, sam3_processor):
-        self._p = sam3_processor
-        self._pil_image: Image.Image | None = None
-        self._size: tuple[int, int] | None = None  # (W, H)
-
-    def set_image(self, image_np: np.ndarray) -> None:
-        self._pil_image = Image.fromarray(image_np.astype(np.uint8))
-        self._size = (image_np.shape[1], image_np.shape[0])
-
-    def predict(
-        self, box: torch.Tensor | np.ndarray, multimask_output: bool = True
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """box: [x1, y1, x2, y2] pixel coords."""
-        if self._pil_image is None:
-            raise RuntimeError("Call set_image() before predict()")
-
-        W, H = self._size
-        x1, y1, x2, y2 = (float(v) for v in box[:4])
-
-        # Convert xyxy → normalized cxcywh expected by SAM3
-        cx = (x1 + x2) / 2.0 / W
-        cy = (y1 + y2) / 2.0 / H
-        bw = (x2 - x1) / W
-        bh = (y2 - y1) / H
-        norm_box_cxcywh = [cx, cy, bw, bh]
-
-        with (torch.autocast("cuda", dtype=torch.bfloat16) if torch.cuda.is_available() else contextlib.nullcontext()):
-            state = self._p.set_image(self._pil_image)
-            state = self._p.add_geometric_prompt(state=state, box=norm_box_cxcywh, label=True)
-
-        if "masks" not in state or len(state["masks"]) == 0:
-            empty = np.zeros((1, H, W), dtype=bool)
-            return empty, np.array([0.0]), np.zeros((1, H, W))
-
-        masks_t = state["masks"].cpu().float()   # (N, 1, H, W)
-        scores_t = state["scores"].cpu().float() # (N,)
-
-        masks_np = masks_t.squeeze(1).numpy().astype(bool)   # (N, H, W)
-        scores_np = scores_t.numpy()
-        return masks_np, scores_np, masks_np.astype(float)
-
-
-# ---------------------------------------------------------------------------
-# Detector proxy — no-op; processor already ran the model
-# ---------------------------------------------------------------------------
-
-class _DetectorProxy:
-    def __call__(self, **inputs):
-        return inputs
-
-
-# ---------------------------------------------------------------------------
 # Main segmenter class
 # ---------------------------------------------------------------------------
 
@@ -217,9 +72,127 @@ class Sam3Segmenter:
         self._sam3_processor = sam3_processor
         self.device = device
 
-        self.processor = _ProcessorProxy(sam3_processor)
-        self.predictor = _PredictorProxy(sam3_processor)
-        self.detector = _DetectorProxy()
+        # 직접 호출 경로용 디버그 상태
+        self._last_sam3_prompts: list[str] = []
+
+    # ── 직접 호출 인터페이스 ────────────────────────────────────────────────
+
+    def segment_text(
+        self,
+        image,
+        prompts: list[str],
+        threshold: float = 0.20,
+    ) -> dict:
+        """텍스트 프롬프트 리스트로 객체 마스크 생성 (SAM3 직접 호출).
+
+        각 prompt 에 대해 SAM3 의 set_text_prompt 호출 → 박스/스코어/마스크 모음을 union.
+        proxy 와 동일한 _extract_noun 전처리를 거치므로 caller 가 GPT-스타일 phrase 를
+        그대로 넘겨도 됨.
+
+        Args:
+            image: PIL.Image 또는 numpy.ndarray (RGB).
+            prompts: 짧은 명사구 리스트.
+            threshold: confidence score 컷오프 (proxy 의 post_process 기본과 동일).
+
+        Returns:
+            {
+              "boxes": tensor (M, 4) xyxy pixel coords (threshold 통과 박스만),
+              "scores": tensor (M,),
+              "masks": tensor (M, 1, H, W) 또는 None,
+              "sam3_actual_prompts": list[str]  # _extract_noun 후 SAM3 가 실제로 받은 phrase
+            }
+        """
+        if isinstance(image, np.ndarray):
+            image = Image.fromarray(image.astype(np.uint8))
+
+        all_boxes, all_scores, all_masks = [], [], []
+        actual_prompts: list[str] = []
+
+        ctx = (torch.autocast("cuda", dtype=torch.bfloat16)
+               if torch.cuda.is_available() else contextlib.nullcontext())
+
+        with ctx:
+            for raw in prompts:
+                noun = _extract_noun(raw.strip().rstrip("."))
+                if not noun:
+                    continue
+                actual_prompts.append(noun)
+                state = self._sam3_processor.set_image(image)
+                state = self._sam3_processor.set_text_prompt(prompt=noun, state=state)
+                if "boxes" in state and len(state["boxes"]) > 0:
+                    all_boxes.append(state["boxes"])
+                    all_scores.append(state["scores"])
+                    if "masks" in state and len(state["masks"]) > 0:
+                        all_masks.append(state["masks"])
+
+        self._last_sam3_prompts = actual_prompts
+
+        if not all_boxes:
+            return {
+                "boxes": torch.zeros(0, 4),
+                "scores": torch.zeros(0),
+                "masks": None,
+                "sam3_actual_prompts": actual_prompts,
+            }
+
+        boxes = torch.cat(all_boxes, dim=0).cpu().float()
+        scores = torch.cat(all_scores, dim=0).cpu().float()
+        masks = torch.cat(all_masks, dim=0) if all_masks else None
+
+        keep = scores > threshold
+        return {
+            "boxes": boxes[keep],
+            "scores": scores[keep],
+            "masks": masks[keep] if masks is not None else None,
+            "sam3_actual_prompts": actual_prompts,
+        }
+
+    def segment_box(
+        self,
+        image,
+        box,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """단일 박스로 SAM3 마스크 생성 (proxy.predictor.predict 와 동일 동작).
+
+        Args:
+            image: PIL.Image 또는 numpy.ndarray (RGB).
+            box: [x1, y1, x2, y2] pixel xyxy.
+
+        Returns:
+            (masks_np, scores_np) — (N, H, W) bool, (N,) float.
+        """
+        if isinstance(image, np.ndarray):
+            pil_image = Image.fromarray(image.astype(np.uint8))
+        else:
+            pil_image = image
+        W, H = pil_image.size
+
+        x1, y1, x2, y2 = (float(v) for v in box[:4])
+        cx = (x1 + x2) / 2.0 / W
+        cy = (y1 + y2) / 2.0 / H
+        bw = (x2 - x1) / W
+        bh = (y2 - y1) / H
+        norm_box = [cx, cy, bw, bh]
+
+        ctx = (torch.autocast("cuda", dtype=torch.bfloat16)
+               if torch.cuda.is_available() else contextlib.nullcontext())
+        with ctx:
+            state = self._sam3_processor.set_image(pil_image)
+            state = self._sam3_processor.add_geometric_prompt(
+                state=state, box=norm_box, label=True,
+            )
+
+        if "masks" not in state or len(state["masks"]) == 0:
+            empty = np.zeros((1, H, W), dtype=bool)
+            return empty, np.array([0.0])
+
+        masks_t = state["masks"].cpu().float()
+        scores_t = state["scores"].cpu().float()
+        masks_np = masks_t.squeeze(1).numpy().astype(bool)
+        scores_np = scores_t.numpy()
+        return masks_np, scores_np
+
+    # ── 레거시 segment() (단일 fallback path) ──────────────────────────────
 
     def segment(
         self,

@@ -45,40 +45,34 @@ class SegmentationService:
         h, w = img.shape[:2]
 
         try:
-            import torch
             from PIL import Image as _PIL_Image
 
             segmenter = _core.get_segmenter()
-            gsam = _core._get_gsam(segmenter)
 
-            if not hasattr(gsam, "processor"):
-                return {"status": "failed", "error": "gsam_not_available",
+            if not hasattr(segmenter, "segment_text"):
+                return {"status": "failed", "error": "sam3_segmenter_unavailable",
                         "masking_family": masking_family, "valid_part_count": 0}
 
             pil_image = _PIL_Image.open(image_path).convert("RGB")
 
             cleaned_prompts = [p.strip().rstrip(".") for p in (sam3_prompts or []) if p and p.strip()]
             if cleaned_prompts:
-                prompt = ". ".join(cleaned_prompts) + "."
                 prompts_used_log = cleaned_prompts
             else:
                 base = furniture_type if furniture_type != "unknown" else "furniture"
-                prompt = base + "."
                 prompts_used_log = [base]
 
-            gsam.processor(images=pil_image, text=prompt, return_tensors="pt")
-
-            last_state = gsam.processor._last_state or {}
-            boxes = last_state.get("boxes")
-            masks = last_state.get("masks")  # (N, 1, H, W)
+            # 가구 마스킹: confidence threshold 없이 모든 detection 수용 (cov 필터로 거름)
+            seg = segmenter.segment_text(pil_image, prompts_used_log, threshold=-1.0)
+            boxes = seg["boxes"]
+            masks = seg["masks"]
+            actual_prompts = seg["sam3_actual_prompts"]
 
             if boxes is None or len(boxes) == 0 or masks is None or len(masks) == 0:
                 return {"status": "failed", "error": "no_detections",
                         "masking_family": masking_family, "valid_part_count": 0,
                         "prompts_used": prompts_used_log,
-                        "sam3_actual_prompts": list(
-                            getattr(gsam.processor, "_last_sam3_prompts", []) or []
-                        )}
+                        "sam3_actual_prompts": actual_prompts}
 
             union_mask = np.zeros((h, w), dtype=np.uint8)
             added = 0
@@ -94,9 +88,7 @@ class SegmentationService:
                 return {"status": "failed", "error": "no_valid_masks",
                         "masking_family": masking_family, "valid_part_count": 0,
                         "prompts_used": prompts_used_log,
-                        "sam3_actual_prompts": list(
-                            getattr(gsam.processor, "_last_sam3_prompts", []) or []
-                        )}
+                        "sam3_actual_prompts": actual_prompts}
 
             output_mask_path.parent.mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(output_mask_path), union_mask)
@@ -113,9 +105,7 @@ class SegmentationService:
                 "method": "sam3_natural_direct_mask",
                 "masking_family": masking_family,
                 "prompts_used": prompts_used_log,
-                "sam3_actual_prompts": list(
-                    getattr(gsam.processor, "_last_sam3_prompts", []) or []
-                ),
+                "sam3_actual_prompts": actual_prompts,
                 "valid_part_count": added,
                 "mask_coverage": round(mask_coverage, 4),
                 "bbox": bbox,
@@ -137,7 +127,7 @@ class SegmentationService:
         output_mask_path: Path = None,
         mode: str = "major_obstacle",
     ) -> dict:
-        """GroundingDINO + SAM으로 장애물/오염물 마스크를 생성합니다."""
+        """SAM3 직접 호출로 장애물/오염물 마스크를 생성합니다."""
         import cv2
         import numpy as np
 
@@ -157,44 +147,27 @@ class SegmentationService:
         area_threshold = 0.35 if mode == "generation_contaminant" else 0.70
 
         try:
-            import torch
             from PIL import Image
 
             segmenter = _core.get_segmenter()
-            gsam = _core._get_gsam(segmenter)
 
-            if not hasattr(gsam, "processor") or not hasattr(gsam, "predictor"):
-                return {"status": "failed", "error": "gsam_not_available", "mask_coverage": 0.0}
+            if not hasattr(segmenter, "segment_text") or not hasattr(segmenter, "segment_box"):
+                return {"status": "failed", "error": "sam3_segmenter_unavailable", "mask_coverage": 0.0}
 
             pil_image = Image.open(image_path).convert("RGB")
-            image_np = np.array(pil_image)
 
-            inputs = gsam.processor(images=pil_image, text=prompt_text, return_tensors="pt")
-            inputs = {k: v.to(gsam.device) for k, v in inputs.items()}
+            seg = segmenter.segment_text(pil_image, object_names, threshold=0.20)
+            boxes = seg["boxes"]
+            sam3_actual_prompts = seg["sam3_actual_prompts"]
 
-            with torch.no_grad():
-                outputs = gsam.detector(**inputs)
-
-            results = gsam.processor.post_process_grounded_object_detection(
-                outputs,
-                input_ids=inputs.get("input_ids"),
-                threshold=0.20,
-                text_threshold=0.20,
-                target_sizes=[(h, w)],
-            )[0]
-
-            boxes = results.get("boxes")
             if boxes is None or len(boxes) == 0:
                 logger.warning("SAM3: no detections for: %s", prompt_text)
                 return {
                     "status": "no_detections", "error": None, "mask_coverage": 0.0,
                     "prompts_used": object_names, "prompt_text": prompt_text,
-                    "sam3_actual_prompts": list(
-                        getattr(gsam.processor, "_last_sam3_prompts", []) or []
-                    ),
+                    "sam3_actual_prompts": sam3_actual_prompts,
                 }
 
-            gsam.predictor.set_image(image_np)
             union_mask = np.zeros((h, w), dtype=np.uint8)
             obstacle_count = 0
 
@@ -218,13 +191,11 @@ class SegmentationService:
                         if inter_area / furn_area > 0.85:
                             continue
 
-                masks_pred, sam_scores, _ = gsam.predictor.predict(box=box, multimask_output=True)
+                masks_pred, sam_scores = segmenter.segment_box(pil_image, box)
                 best_idx = int(np.argmax(sam_scores))
                 mask = masks_pred[best_idx].astype(np.uint8) * 255
                 union_mask = np.maximum(union_mask, mask)
                 obstacle_count += 1
-
-            sam3_actual_prompts = list(getattr(gsam.processor, "_last_sam3_prompts", []) or [])
 
             if obstacle_count == 0:
                 return {"status": "no_valid_detections", "error": None,
