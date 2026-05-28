@@ -94,12 +94,14 @@ def inpaint_with_banana(
         white = Image.new("RGB", (w, h), (255, 255, 255))
         hint_image.paste(white, mask=mask)
 
-        # Nano Banana API 호출
+        # Nano Banana API 호출 (seed + low temperature 로 deterministic 화)
         response = client.models.generate_content(
             model=_MODEL,
             contents=[prompt, hint_image],
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE", "TEXT"],
+                seed=42,
+                temperature=0.2,
             ),
         )
 
