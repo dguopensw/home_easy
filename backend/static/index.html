@@ -1102,15 +1102,31 @@
     const sam3El = $('sam3PromptContent');
     if (sam3El) {
       let html = '';
+
+      // 가구 마스킹 SAM3 프롬프트 (항상 표시 — 모든 요청마다 실행)
+      const pm = data.part_mask_info || {};
+      const fpromptsUsed = pm.prompts_used || [];
+      const factualPrompts = pm.sam3_actual_prompts || [];
+      if (fpromptsUsed.length || factualPrompts.length) {
+        html += `<div class="obstacle-box" style="margin-bottom:10px;border-left:3px solid #2563eb">
+          <h4 style="margin:0 0 6px">가구 마스킹 SAM3 프롬프트</h4>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">GPT가 만든 phrase: ${fpromptsUsed.map(p => `<code>${p}</code>`).join(', ')}</div>
+          ${factualPrompts.length ? `<div style="font-size:11px;color:#c2410c;margin-top:4px">SAM3 실제 입력: ${factualPrompts.map(p => `<code>${p}</code>`).join(', ')}</div>` : ''}
+          ${pm.status ? `<div style="font-size:11px;margin-top:4px">상태: <strong>${pm.status}</strong> | 부분 마스크 수: ${pm.valid_part_count ?? '-'} | 커버리지: ${pm.mask_coverage != null ? (pm.mask_coverage * 100).toFixed(1) + '%' : '-'}</div>` : ''}
+        </div>`;
+      }
+
       if (obs.has_major_obstacle || contAnal.has_generation_contaminants) {
         if (obs.has_major_obstacle) {
           const si = data.sam3_obstacle_info || {};
           const promptText = si.prompt_text || (obs.obstacles || []).map(o => o.name).join('. ') + '.';
           const promptsUsed = si.prompts_used || (obs.obstacles || []).map(o => o.name);
+          const actualPrompts = si.sam3_actual_prompts || [];
           html += `<div class="obstacle-box" style="margin-bottom:10px">
             <h4 style="margin:0 0 6px">장애물 SAM3 프롬프트</h4>
             <div style="font-family:monospace;background:#f5f5f5;padding:8px;border-radius:6px;font-size:12px;word-break:break-all">"${promptText}"</div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">개별 항목: ${promptsUsed.map(p => `<code>${p}</code>`).join(', ')}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">개별 항목 (GPT name): ${promptsUsed.map(p => `<code>${p}</code>`).join(', ')}</div>
+            ${actualPrompts.length ? `<div style="font-size:11px;color:#c2410c;margin-top:4px">SAM3 실제 입력: ${actualPrompts.map(p => `<code>${p}</code>`).join(', ')}</div>` : ''}
             ${si.status ? `<div style="font-size:11px;margin-top:4px">상태: <strong>${si.status}</strong> | 감지 수: ${si.object_count ?? '-'} | 커버리지: ${si.mask_coverage != null ? (si.mask_coverage * 100).toFixed(1) + '%' : '-'}</div>` : ''}
           </div>`;
         }
@@ -1119,10 +1135,12 @@
           const conts = contAnal.contaminants || [];
           const promptText = ci.prompt_text || conts.map(o => `${o.name}${o.location ? ' ' + o.location : ''}`).join('. ') + '.';
           const promptsUsed = ci.prompts_used || conts.map(o => o.name);
+          const actualPrompts = ci.sam3_actual_prompts || [];
           html += `<div class="obstacle-box">
             <h4 style="margin:0 0 6px">오염물 SAM3 프롬프트</h4>
             <div style="font-family:monospace;background:#f5f5f5;padding:8px;border-radius:6px;font-size:12px;word-break:break-all">"${promptText}"</div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">개별 항목: ${promptsUsed.map(p => `<code>${p}</code>`).join(', ')}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">개별 항목 (GPT name): ${promptsUsed.map(p => `<code>${p}</code>`).join(', ')}</div>
+            ${actualPrompts.length ? `<div style="font-size:11px;color:#c2410c;margin-top:4px">SAM3 실제 입력: ${actualPrompts.map(p => `<code>${p}</code>`).join(', ')}</div>` : ''}
             ${ci.status ? `<div style="font-size:11px;margin-top:4px">상태: <strong>${ci.status}</strong> | 감지 수: ${ci.object_count ?? '-'} | 커버리지: ${ci.mask_coverage != null ? (ci.mask_coverage * 100).toFixed(1) + '%' : '-'}</div>` : ''}
             <div style="margin-top:8px">
               ${conts.map(o => `<div style="font-size:12px">• <strong>${o.name}</strong>${o.location ? ' @ ' + o.location : ''}${o.description ? ' — ' + o.description : ''}</div>`).join('')}

@@ -228,6 +228,7 @@ def select_best_image_gpt(title: str, description: str, image_urls: list[str]) -
             model=VISION_MODEL,
             messages=[{"role": "user", "content": [{"type": "text", "text": prompt}] + image_content}],
             max_tokens=10,
+            temperature=0,
         )
         answer = resp.choices[0].message.content.strip()
         idx = int(re.search(r"\d+", answer).group())
@@ -295,13 +296,57 @@ def classify_furniture_from_image(image_path: Path, title: str = "", description
     encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
     data_url = f"data:{mime_type};base64,{encoded}"
 
-    context = "What type of furniture is the main object in this image?\n"
+    context = (
+        "You are analyzing a furniture listing. The seller wrote a title/description AND "
+        "uploaded a photo. The photo may contain multiple pieces of furniture, but only ONE "
+        "is the item being sold. Use the listing text to identify which furniture item is "
+        "the seller's product, then return:\n"
+        "1) The furniture type (of the seller's item).\n"
+        "2) A list of short noun phrases that SAM3 should use to segment ONLY that target "
+        "furniture, INCLUDING any attached or visually-similar accessories that belong with "
+        "it (throw pillows, cushions, blankets, draped fabric) so they are masked as part of "
+        "the target furniture rather than left as holes. Do NOT include other furniture "
+        "items visible in the background.\n\n"
+    )
     if title:
         context += f"Listing title: {title}\n"
+    if description:
+        snippet = description.strip()
+        if len(snippet) > 600:
+            snippet = snippet[:600] + "..."
+        context += f"Listing description: {snippet}\n"
     valid = ", ".join(VALID_FURNITURE_TYPES)
     context += (
-        f"\nRespond with ONLY a JSON object: "
-        f'{{"furniture_type": "<one of: {valid}>", "confidence": "high|medium|low"}}'
+        "\nRules for sam3_segmentation_prompts (CRITICAL — read carefully):\n"
+        "- SAM3 requires SHORT, ATOMIC noun phrases (1-3 words preferred, max 4). "
+        "Do NOT combine accessories with 'X with Y and Z' — SAM3's embedding degrades "
+        "to 'X' and the accessories are NOT picked up. List each item SEPARATELY.\n"
+        "- The first phrase MUST be the bare furniture type (matching the type field).\n"
+        "- Include an accessory ONLY when it appears to be a built-in/default part of "
+        "the product being sold — i.e. it ships with the furniture, matches the body's "
+        "fabric/material/color, sits in a designated slot (seat back, integrated cushion), "
+        "and looks like part of the product photo styling.\n"
+        "- DO NOT include accessories that look like the user temporarily placed them on "
+        "top: visibly different fabric/color from the body, casually draped or crumpled, "
+        "clearly removable decorative or personal items. Those will be handled separately "
+        "as contaminants.\n"
+        "- When uncertain, err on the side of EXCLUDING the accessory (treat it as a "
+        "contaminant rather than as part of the furniture).\n"
+        "- If the listing text disambiguates among multiple items in the photo, let the "
+        "phrases reflect the target item.\n"
+        "- 1-5 phrases total.\n\n"
+        "Examples:\n"
+        "  Sofa with matching back cushions that came with the sofa → ['sofa', "
+        "'sofa cushion']\n"
+        "  Sofa with a casually draped blanket (not a product feature) → ['sofa'] "
+        "(blanket is a contaminant, not part of the sofa)\n"
+        "  Bed with integrated mattress and built-in pillows shown in product styling → "
+        "['bed', 'mattress', 'pillow']\n"
+        "  Bare desk → ['desk']\n"
+        "  Armchair with built-in seat cushion → ['armchair', 'cushion']\n\n"
+        f"Respond with ONLY a JSON object: "
+        f'{{"furniture_type": "<one of: {valid}>", "confidence": "high|medium|low", '
+        '"sam3_segmentation_prompts": ["<short noun phrase>", ...]}}'
     )
 
     try:
@@ -311,7 +356,8 @@ def classify_furniture_from_image(image_path: Path, title: str = "", description
                 {"type": "text", "text": context},
                 {"type": "image_url", "image_url": {"url": data_url, "detail": "low"}},
             ]}],
-            max_tokens=60,
+            max_tokens=200,
+            temperature=0,
         )
         raw = resp.choices[0].message.content.strip()
         match = re.search(r"\{.*\}", raw, flags=re.S)
@@ -320,16 +366,22 @@ def classify_furniture_from_image(image_path: Path, title: str = "", description
             ftype = parsed.get("furniture_type", "unknown").lower()
             if ftype not in VALID_FURNITURE_TYPES:
                 ftype = "unknown"
+            raw_prompts = parsed.get("sam3_segmentation_prompts") or []
+            if not isinstance(raw_prompts, list):
+                raw_prompts = []
+            sam3_prompts = [str(p).strip() for p in raw_prompts if isinstance(p, str) and p.strip()]
             return {
                 "furniture_type": ftype,
                 "confidence": parsed.get("confidence", "medium"),
                 "evidence": "gpt_vision",
+                "sam3_segmentation_prompts": sam3_prompts,
             }
     except Exception as e:
         _mark_openai_unavailable(e)
         logger.warning("Image furniture classification failed: %s", e)
 
-    return {"furniture_type": "unknown", "confidence": "low", "evidence": "classification_failed"}
+    return {"furniture_type": "unknown", "confidence": "low", "evidence": "classification_failed",
+            "sam3_segmentation_prompts": []}
 
 
 def reconcile_furniture_type(listing_type: dict, image_type: dict) -> dict:
@@ -337,36 +389,42 @@ def reconcile_furniture_type(listing_type: dict, image_type: dict) -> dict:
     it = image_type["furniture_type"]
     lc = listing_type["confidence"]
     ic = image_type["confidence"]
+    # image-based GPT vision actually saw the photo, so its SAM3 prompts are passed through
+    # regardless of which classification (listing/image) wins the type reconciliation.
+    image_sam3_prompts = image_type.get("sam3_segmentation_prompts") or []
+
+    def _result(furniture_type: str, confidence: str, warning: str | None) -> dict:
+        return {
+            "furniture_type": furniture_type,
+            "confidence": confidence,
+            "listing": lt,
+            "image": it,
+            "warning": warning,
+            "sam3_segmentation_prompts": image_sam3_prompts,
+        }
 
     if lt == it and lt != "unknown":
-        return {"furniture_type": lt, "confidence": "high",
-                "listing": lt, "image": it, "warning": None}
+        return _result(lt, "high", None)
 
     if lc == "high" and lt != "unknown" and (ic in ("low", "medium") or it == "unknown"):
-        return {"furniture_type": lt, "confidence": "high",
-                "listing": lt, "image": it, "warning": None}
+        return _result(lt, "high", None)
 
     if lc == "high" and lt != "unknown" and it != lt:
         warning = f"listing='{lt}' vs image='{it}' — using listing classification for target furniture"
-        return {"furniture_type": lt, "confidence": "high",
-                "listing": lt, "image": it, "warning": warning}
+        return _result(lt, "high", warning)
 
     if ic == "high" and it != "unknown" and (lt == "unknown" or lc == "low"):
-        return {"furniture_type": it, "confidence": "high",
-                "listing": lt, "image": it, "warning": None}
+        return _result(it, "high", None)
 
     if lt != "unknown" and it != "unknown" and lt != it:
         warning = f"listing='{lt}' vs image='{it}' — using image classification"
-        return {"furniture_type": it, "confidence": "medium",
-                "listing": lt, "image": it, "warning": warning}
+        return _result(it, "medium", warning)
 
     final = lt if lt != "unknown" else it
     if final == "unknown":
-        return {"furniture_type": "unknown", "confidence": "low",
-                "listing": lt, "image": it, "warning": None}
+        return _result("unknown", "low", None)
 
-    return {"furniture_type": final, "confidence": "medium",
-            "listing": lt, "image": it, "warning": None}
+    return _result(final, "medium", None)
 
 
 # ---------------------------------------------------------------------------
@@ -386,12 +444,6 @@ def get_segmenter(device: str = "cpu"):
         _segmenter_device = device
         logger.info("Segmenter loaded: %s", type(_segmenter).__name__)
     return _segmenter
-
-
-def _get_gsam(segmenter):
-    if hasattr(segmenter, "primary"):
-        return segmenter.primary
-    return segmenter
 
 
 # ---------------------------------------------------------------------------
@@ -488,6 +540,7 @@ def measure_dimensions(
                 ]},
             ],
             max_tokens=500,
+            temperature=0,
         )
     except Exception as e:
         reason = _mark_openai_unavailable(e) or "openai_dimension_call_failed"

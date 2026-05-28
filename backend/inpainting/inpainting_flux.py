@@ -25,17 +25,17 @@ def _get_pipe():
 
 
 _FURNITURE_PROMPTS: dict[str, str] = {
-    "sofa":     "empty fabric sofa cushions, smooth upholstery surface, matching the existing sofa texture and color, photorealistic, consistent lighting with the rest of the scene",
-    "chair":    "empty chair seat with smooth fabric, matching the existing chair texture and color, photorealistic, consistent lighting",
-    "desk":     "empty desk surface, smooth wood texture, matching the existing desk material and color, photorealistic, consistent lighting",
-    "table":    "empty table surface, smooth texture, matching the existing table material and color, photorealistic, consistent lighting",
-    "bed":      "empty bed with smooth flat bedding, matching the existing sheet texture and color, photorealistic, consistent lighting",
-    "wardrobe": "empty floor in front of wardrobe, matching the existing floor texture, photorealistic, consistent lighting",
-    "drawer":   "empty drawer front surface, smooth texture, matching the existing material and color, photorealistic, consistent lighting",
-    "shelf":    "empty shelf with smooth surface, matching the existing shelf texture and color, photorealistic, consistent lighting",
+    "sofa":     "smooth continuous sofa upholstery fabric, plain unobstructed body surface, matching the existing sofa texture and color, photorealistic, consistent lighting with the rest of the scene",
+    "chair":    "smooth continuous chair upholstery fabric, plain unobstructed body surface, matching the existing chair texture and color, photorealistic, consistent lighting",
+    "desk":     "smooth continuous desk top surface, plain unobstructed, matching the existing desk wood material and color, photorealistic, consistent lighting",
+    "table":    "smooth continuous table top surface, plain unobstructed, matching the existing table material and color, photorealistic, consistent lighting",
+    "bed":      "smooth flat bed sheet surface, plain unobstructed bedding, matching the existing sheet texture and color, photorealistic, consistent lighting",
+    "wardrobe": "smooth floor or wall behind wardrobe, matching the existing texture, photorealistic, consistent lighting",
+    "drawer":   "smooth drawer front panel, plain unobstructed, matching the existing material and color, photorealistic, consistent lighting",
+    "shelf":    "smooth empty shelf panel surface, plain unobstructed, matching the existing shelf texture and color, photorealistic, consistent lighting",
 }
 
-_DEFAULT_PROMPT = "empty clean furniture surface, smooth texture matching the surroundings, photorealistic, consistent lighting"
+_DEFAULT_PROMPT = "smooth continuous furniture body surface, plain unobstructed, matching the surroundings, photorealistic, consistent lighting"
 
 
 def _get_prompt(furniture_type: str) -> str:
@@ -77,12 +77,13 @@ def inpaint_with_flux(
         mask = Image.open(mask_path).convert("L")
         w, h = image.size
 
-        # 마스크 강제 이진화 (anti-aliasing/회색 픽셀 제거)
+        # 마스크 강제 이진화 — 원본 (BrushNet 합성용, 가구 본체 침범 방지)
         mask_arr = np.array(mask)
         mask_bin = (mask_arr > 127).astype(np.uint8) * 255
-        mask = Image.fromarray(mask_bin, mode="L")
+        original_mask = Image.fromarray(mask_bin, mode="L")
 
-        # Dilation: 객체 경계 + 그림자/잔상 영역까지 포함
+        # Dilation: 그림자/경계까지 자연스러운 인페인팅을 위해 확장 (Flux 입력용)
+        mask = original_mask
         if mask_dilation_px > 0:
             # MaxFilter size는 홀수여야 하며 대략 2*radius+1
             filter_size = max(3, mask_dilation_px * 2 + 1)
@@ -113,11 +114,23 @@ def inpaint_with_flux(
             generator=generator,
         ).images[0]
 
+        # 진단 로그: Flux 출력 크기 vs 원본 크기 비교 (stretch 진단용)
+        flux_w, flux_h = result.size
+        orig_aspect = w / h
+        flux_aspect = flux_w / flux_h
+        stretch_x = w / flux_w
+        stretch_y = h / flux_h
+        logger.info(
+            "Flux result: %dx%d (aspect %.3f) → resize to original %dx%d (aspect %.3f) | "
+            "stretch_x=%.3f stretch_y=%.3f",
+            flux_w, flux_h, flux_aspect, w, h, orig_aspect, stretch_x, stretch_y,
+        )
+
         # 원본 크기로 복원
         result = result.resize((w, h), Image.LANCZOS)
 
-        # 합성용 hard mask (이진) + 가장자리만 살짝 부드럽게 (자연스러운 블렌딩)
-        hard_mask_arr = (np.array(mask) > 127).astype(np.uint8) * 255
+        # 합성용 hard mask: dilation 안 된 원본 마스크 사용 (가구 본체 영역 100% 보존)
+        hard_mask_arr = (np.array(original_mask) > 127).astype(np.uint8) * 255
         hard_mask = Image.fromarray(hard_mask_arr, mode="L")
         # 1~2px 정도의 미세한 블러로 경계 자연스럽게
         composite_mask = hard_mask.filter(ImageFilter.GaussianBlur(radius=1.5))
@@ -132,6 +145,14 @@ def inpaint_with_flux(
             "status": "done",
             "method": "flux_fill_brushnet_composite",
             "warnings": BASE_WARNINGS,
+            "diagnostics": {
+                "original_size": [w, h],
+                "flux_output_size": [flux_w, flux_h],
+                "original_aspect": round(orig_aspect, 3),
+                "flux_aspect": round(flux_aspect, 3),
+                "stretch_x": round(stretch_x, 3),
+                "stretch_y": round(stretch_y, 3),
+            },
         }
 
     except Exception as e:

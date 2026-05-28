@@ -25,8 +25,14 @@ class SegmentationService:
         title: str = "",
         description: str = "",
         debug_dir: Path | None = None,
+        sam3_prompts: list[str] | None = None,
     ) -> dict:
-        """SAM3로 가구 마스크를 생성합니다 (텍스트 프롬프트 기반)."""
+        """SAM3로 가구 마스크를 생성합니다 (텍스트 프롬프트 기반).
+
+        sam3_prompts: GPT-vision이 이미지·게시글 텍스트를 종합해 만든 SAM3 호환 짧은
+        명사구 리스트. 주어지면 ". "로 join해 한 번에 SAM3에 전달 (proxy가 split + union).
+        없으면 furniture_type 한 단어로 폴백.
+        """
         import cv2
         import numpy as np
 
@@ -39,29 +45,35 @@ class SegmentationService:
         h, w = img.shape[:2]
 
         try:
-            import torch
             from PIL import Image as _PIL_Image
 
             segmenter = _core.get_segmenter()
-            gsam = _core._get_gsam(segmenter)
 
-            if not hasattr(gsam, "processor"):
-                return {"status": "failed", "error": "gsam_not_available",
+            if not hasattr(segmenter, "segment_text"):
+                return {"status": "failed", "error": "sam3_segmenter_unavailable",
                         "masking_family": masking_family, "valid_part_count": 0}
 
             pil_image = _PIL_Image.open(image_path).convert("RGB")
 
-            prompt = furniture_type if furniture_type != "unknown" else "furniture"
-            gsam.processor(images=pil_image, text=prompt + ".", return_tensors="pt")
+            cleaned_prompts = [p.strip().rstrip(".") for p in (sam3_prompts or []) if p and p.strip()]
+            if cleaned_prompts:
+                prompts_used_log = cleaned_prompts
+            else:
+                base = furniture_type if furniture_type != "unknown" else "furniture"
+                prompts_used_log = [base]
 
-            last_state = gsam.processor._last_state or {}
-            boxes = last_state.get("boxes")
-            masks = last_state.get("masks")  # (N, 1, H, W)
+            # 가구 마스킹: threshold=None 으로 raw 결과 그대로 수용 (legacy proxy 동작과 동일)
+            # NaN 점수 박스도 포함 — 이후 cov 필터 (0.001~0.95) 가 노이즈 거름
+            seg = segmenter.segment_text(pil_image, prompts_used_log, threshold=None)
+            boxes = seg["boxes"]
+            masks = seg["masks"]
+            actual_prompts = seg["sam3_actual_prompts"]
 
             if boxes is None or len(boxes) == 0 or masks is None or len(masks) == 0:
                 return {"status": "failed", "error": "no_detections",
                         "masking_family": masking_family, "valid_part_count": 0,
-                        "prompts_used": [prompt]}
+                        "prompts_used": prompts_used_log,
+                        "sam3_actual_prompts": actual_prompts}
 
             union_mask = np.zeros((h, w), dtype=np.uint8)
             added = 0
@@ -76,7 +88,8 @@ class SegmentationService:
             if added == 0:
                 return {"status": "failed", "error": "no_valid_masks",
                         "masking_family": masking_family, "valid_part_count": 0,
-                        "prompts_used": [prompt]}
+                        "prompts_used": prompts_used_log,
+                        "sam3_actual_prompts": actual_prompts}
 
             output_mask_path.parent.mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(output_mask_path), union_mask)
@@ -86,13 +99,14 @@ class SegmentationService:
             bbox = ([int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]
                     if len(xs) > 0 else None)
 
-            logger.info("SAM3 mask done: family=%s prompt=%s valid_masks=%d coverage=%.3f",
-                        masking_family, prompt, added, mask_coverage)
+            logger.info("SAM3 mask done: family=%s prompts=%s valid_masks=%d coverage=%.3f",
+                        masking_family, prompts_used_log, added, mask_coverage)
             return {
                 "status": "done",
                 "method": "sam3_natural_direct_mask",
                 "masking_family": masking_family,
-                "prompts_used": [prompt],
+                "prompts_used": prompts_used_log,
+                "sam3_actual_prompts": actual_prompts,
                 "valid_part_count": added,
                 "mask_coverage": round(mask_coverage, 4),
                 "bbox": bbox,
@@ -114,7 +128,7 @@ class SegmentationService:
         output_mask_path: Path = None,
         mode: str = "major_obstacle",
     ) -> dict:
-        """GroundingDINO + SAM으로 장애물/오염물 마스크를 생성합니다."""
+        """SAM3 직접 호출로 장애물/오염물 마스크를 생성합니다."""
         import cv2
         import numpy as np
 
@@ -127,52 +141,34 @@ class SegmentationService:
         if not object_names:
             object_names = ["obstacle on furniture" if mode == "major_obstacle" else "object on furniture"]
 
-        if mode == "generation_contaminant":
-            parts = []
-            for o in objects:
-                name = o.get("name", "object")
-                location = o.get("location", "")
-                parts.append(f"{name} {location}".strip() if location else name)
-            prompt_text = ". ".join(parts) + "." if parts else "object on furniture."
-        else:
-            prompt_text = ". ".join(object_names) + "."
+        # SAM3 paper requires short noun phrases — feed GPT names directly without location.
+        # Spatial info from GPT lives in result.json's contaminants[].location for display only.
+        prompt_text = ". ".join(object_names) + "."
 
         area_threshold = 0.35 if mode == "generation_contaminant" else 0.70
 
         try:
-            import torch
             from PIL import Image
 
             segmenter = _core.get_segmenter()
-            gsam = _core._get_gsam(segmenter)
 
-            if not hasattr(gsam, "processor") or not hasattr(gsam, "predictor"):
-                return {"status": "failed", "error": "gsam_not_available", "mask_coverage": 0.0}
+            if not hasattr(segmenter, "segment_text") or not hasattr(segmenter, "segment_box"):
+                return {"status": "failed", "error": "sam3_segmenter_unavailable", "mask_coverage": 0.0}
 
             pil_image = Image.open(image_path).convert("RGB")
-            image_np = np.array(pil_image)
 
-            inputs = gsam.processor(images=pil_image, text=prompt_text, return_tensors="pt")
-            inputs = {k: v.to(gsam.device) for k, v in inputs.items()}
+            seg = segmenter.segment_text(pil_image, object_names, threshold=0.20)
+            boxes = seg["boxes"]
+            sam3_actual_prompts = seg["sam3_actual_prompts"]
 
-            with torch.no_grad():
-                outputs = gsam.detector(**inputs)
-
-            results = gsam.processor.post_process_grounded_object_detection(
-                outputs,
-                input_ids=inputs.get("input_ids"),
-                threshold=0.20,
-                text_threshold=0.20,
-                target_sizes=[(h, w)],
-            )[0]
-
-            boxes = results.get("boxes")
             if boxes is None or len(boxes) == 0:
                 logger.warning("SAM3: no detections for: %s", prompt_text)
-                return {"status": "no_detections", "error": None, "mask_coverage": 0.0,
-                        "prompts_used": object_names, "prompt_text": prompt_text}
+                return {
+                    "status": "no_detections", "error": None, "mask_coverage": 0.0,
+                    "prompts_used": object_names, "prompt_text": prompt_text,
+                    "sam3_actual_prompts": sam3_actual_prompts,
+                }
 
-            gsam.predictor.set_image(image_np)
             union_mask = np.zeros((h, w), dtype=np.uint8)
             obstacle_count = 0
 
@@ -196,7 +192,7 @@ class SegmentationService:
                         if inter_area / furn_area > 0.85:
                             continue
 
-                masks_pred, sam_scores, _ = gsam.predictor.predict(box=box, multimask_output=True)
+                masks_pred, sam_scores = segmenter.segment_box(pil_image, box)
                 best_idx = int(np.argmax(sam_scores))
                 mask = masks_pred[best_idx].astype(np.uint8) * 255
                 union_mask = np.maximum(union_mask, mask)
@@ -205,7 +201,8 @@ class SegmentationService:
             if obstacle_count == 0:
                 return {"status": "no_valid_detections", "error": None,
                         "mask_coverage": 0.0, "prompts_used": object_names,
-                        "prompt_text": prompt_text}
+                        "prompt_text": prompt_text,
+                        "sam3_actual_prompts": sam3_actual_prompts}
 
             output_mask_path.parent.mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(output_mask_path), union_mask)
@@ -222,6 +219,7 @@ class SegmentationService:
                 "object_count": obstacle_count,
                 "prompts_used": object_names,
                 "prompt_text": prompt_text,
+                "sam3_actual_prompts": sam3_actual_prompts,
                 "warnings": seg_warnings,
             }
 
@@ -363,6 +361,64 @@ class SegmentationService:
             "small_holes_filled": holes_filled_est,
             "feather_applied": feather_info.get("status") == "done",
             "warnings": feather_info.get("warnings", []),
+        }
+
+    # ── 가구 마스크 내부 구멍 검출 (방식 A) ────────────────────────────────
+
+    @staticmethod
+    def compute_internal_holes(
+        mask_path: Path,
+        output_path: Path,
+        closing_kernel_ratio: float = 0.05,
+        min_hole_area_ratio: float = 0.0005,
+    ) -> dict:
+        """가구 마스크의 '이상적 실루엣' 안에 있는 구멍을 contaminant 후보로 검출.
+
+        흐름:
+          1) morphological closing 으로 가구의 외곽 실루엣을 메움
+          2) 실루엣 ∩ ¬(원본 마스크) = 내부 구멍
+          3) 너무 작은 노이즈는 제거 (min_hole_area_ratio 미만 컴포넌트)
+
+        외부 배경과 연결된 영역은 닫히지 않으므로 구멍으로 검출되지 않음 (의도된 동작).
+        """
+        import cv2
+        import numpy as np
+
+        mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+        if mask is None:
+            return {"status": "failed", "error": "cannot_read_mask",
+                    "hole_count": 0, "coverage": 0.0}
+
+        h, w = mask.shape
+        binary = (mask > 127).astype(np.uint8)
+
+        k = max(11, int(min(h, w) * closing_kernel_ratio))
+        if k % 2 == 0:
+            k += 1
+        kernel = np.ones((k, k), np.uint8)
+        closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
+        holes = ((closed > 0) & (binary == 0)).astype(np.uint8) * 255
+
+        num, labels, stats, _ = cv2.connectedComponentsWithStats(holes, connectivity=8)
+        min_area = int(h * w * min_hole_area_ratio)
+        filtered = np.zeros_like(holes)
+        kept = 0
+        for i in range(1, num):
+            if int(stats[i, cv2.CC_STAT_AREA]) >= min_area:
+                filtered = np.maximum(filtered, (labels == i).astype(np.uint8) * 255)
+                kept += 1
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(output_path), filtered)
+
+        coverage = float(np.count_nonzero(filtered) / (h * w))
+        return {
+            "status": "done",
+            "method": "morphological_closing_internal_holes",
+            "hole_count": kept,
+            "coverage": round(coverage, 4),
+            "closing_kernel_size": k,
         }
 
     # ── 이미지 합성 헬퍼 ──────────────────────────────────────────────────

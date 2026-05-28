@@ -153,6 +153,7 @@ class PipelineService:
             furniture_mask_info = self.segmentation.generate_sam3_furniture_mask_natural(
                 original_path, furniture_type, raw_mask_path,
                 title=title, description=description,
+                sam3_prompts=furniture_info.get("sam3_segmentation_prompts"),
             )
 
             if furniture_mask_info["status"] != "done":
@@ -238,6 +239,8 @@ class PipelineService:
             boundary_completion_info = None
             generation_mask_expansion_info = None
             boundary_completion_used = False
+            internal_holes_info = None
+            boundary_inpainting_info = None
 
             # ── 10. 인페인팅 (필요 시) ────────────────────────────────────
             if has_major_obstacle or has_contaminants:
@@ -307,10 +310,11 @@ class PipelineService:
                             lama_src_mask = completion_mask_path
 
                         boundary_completed_path = job_dir / "08_boundary_completed.png"
-                        bc_result = self.inpainting.inpaint_with_flux(
+                        bc_result = self.inpainting.inpaint(
                             original_path, lama_src_mask, boundary_completed_path,
                             furniture_type=furniture_type,
                         )
+                        boundary_inpainting_info = bc_result
 
                         if bc_result.get("status") == "done":
                             boundary_completion_used = True
@@ -338,12 +342,28 @@ class PipelineService:
                     elif contaminant_mask_arr is not None:
                         union_arr = contaminant_mask_arr
 
+                    # 방식 A: 가구 마스크의 내부 구멍을 contaminant 후보로 보강.
+                    # GPT 가 누락한 베개/담요/소파 위 작은 물체 등을 마스크 수준에서 자동 캐치.
+                    internal_holes_mask_path = job_dir / "07_internal_holes_mask.png"
+                    internal_holes_info = self.segmentation.compute_internal_holes(
+                        final_mask_path, internal_holes_mask_path,
+                    )
+                    if (internal_holes_info.get("status") == "done"
+                            and internal_holes_info.get("coverage", 0) > 0):
+                        holes_arr = cv2.imread(str(internal_holes_mask_path), cv2.IMREAD_GRAYSCALE)
+                        if holes_arr is not None:
+                            if union_arr is not None:
+                                union_arr = np.maximum(union_arr, holes_arr)
+                            else:
+                                union_arr = holes_arr
+                            warnings.append("internal_mask_holes_added_as_contaminants")
+
                     if union_arr is not None:
                         union_mask_path = job_dir / "07_union_mask.png"
                         cv2.imwrite(str(union_mask_path), union_arr)
 
                         obs_removed_file = job_dir / "05_obstacle_removed.png"
-                        inpainting_info = self.inpainting.inpaint_with_flux(
+                        inpainting_info = self.inpainting.inpaint(
                             original_path, union_mask_path, obs_removed_file,
                             furniture_type=furniture_type,
                         )
@@ -354,7 +374,7 @@ class PipelineService:
                             if has_contaminants:
                                 warnings.append("generation_uses_contaminant_removed_image")
                         else:
-                            warnings.append("flux_inpainting_failed_fallback_to_original")
+                            warnings.append("inpainting_failed_fallback_to_original")
 
             # ── 11. 생성용 컷아웃 ─────────────────────────────────────────
             generation_cutout_path = None
@@ -373,6 +393,7 @@ class PipelineService:
                 regen_info = self.segmentation.generate_sam3_furniture_mask_natural(
                     obstacle_removed_path, furniture_type, gen_raw_mask_file,
                     title=title, description=description,
+                    sam3_prompts=furniture_info.get("sam3_segmentation_prompts"),
                 )
                 generation_mask_expansion_info = {"method": "sam_rerun_on_inpainted", "status": regen_info.get("status")}
 
@@ -607,6 +628,8 @@ class PipelineService:
                     "sam3_info": sam3_info,
                     "contaminant_sam3_info": contaminant_sam3_info,
                     "inpainting_info": inpainting_info,
+                    "boundary_inpainting_info": boundary_inpainting_info,
+                    "internal_holes_info": internal_holes_info,
                     "floor_cleanup_info": floor_cleanup_info,
                     "mask_refinement_info": mask_refinement_info,
                     "boundary_occlusion_info": boundary_occlusion_info,

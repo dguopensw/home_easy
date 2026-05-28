@@ -68,6 +68,7 @@ class FurnitureAnalysisService:
                     {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}},
                 ]}],
                 max_tokens=400,
+                temperature=0,
                 response_format={"type": "json_object"},
             )
             parsed = json.loads(resp.choices[0].message.content.strip())
@@ -168,16 +169,36 @@ class FurnitureAnalysisService:
         prompt = (
             f"Analyze this furniture image (type: {furniture_type}) for objects that would "
             "contaminate 3D model generation.\n\n"
-            "These are objects placed ON or AROUND the furniture that are NOT part of the "
-            "furniture itself, and would be incorrectly baked into a 3D model if left in.\n\n"
-            "Target contaminants: books, laptops, tablets, desk lamps, cups, mugs, bottles, "
-            "decorative items, remote controls, small boxes, blankets, clutter, personal items.\n\n"
+            "These are objects placed ON, AROUND, or CLAMPED to the furniture that are NOT part "
+            "of the furniture itself, and would be incorrectly baked into a 3D model if left in.\n\n"
+            "── CONSISTENCY RULE (CRITICAL) ──\n"
+            "Use the SAME built-in vs user-placed criterion as the furniture-segmentation step:\n"
+            "• BUILT-IN (NOT a contaminant): accessories that ship with the furniture and "
+            "match its fabric/material/color, sit in a designated slot, and look like part of "
+            "the product photo styling (e.g., matching back cushions on a sofa, integrated "
+            "mattress on a sofabed, built-in seat cushion on an armchair).\n"
+            "• USER-PLACED (IS a contaminant): items visibly different in fabric/color from the "
+            "body, casually draped or crumpled, clearly removable decorative or personal items.\n"
+            "When uncertain, FLAG as contaminant (inpainting handles it; safer than leaving "
+            "residue).\n\n"
+            "Target contaminants (when user-placed): books, laptops, tablets, desk lamps, cups, "
+            "mugs, bottles, decorative items, remote controls, small boxes, throw blankets, "
+            "clutter, personal items, monitor arms, monitor stands, monitor mounts, "
+            "clamp-mounted accessories, power strips, multi-tap outlets, charging cables, "
+            "cable clutter, keyboards, mice, computer peripherals, picture frames, plants.\n\n"
             "Do NOT flag as contaminants:\n"
             "- The furniture structure itself (legs, frame, surface, drawers, backrest)\n"
-            f"- Built-in cushions/parts that are included with the {furniture_type}\n"
-            "- Handles, knobs, or hardware attached to the furniture\n\n"
-            f"For desk/table: any independent object on the tabletop surface is a contaminant.\n"
+            f"- Built-in cushions/pillows/parts that ship with the {furniture_type} and match "
+            "its fabric/color (these are masked as part of the furniture in a separate step)\n"
+            "- Built-in handles, knobs, or hardware that are part of the original furniture design\n"
+            "- Wall-mounted items behind the furniture (curtains, blinds, window frames)\n\n"
+            "For desk/table: any independent object on the tabletop OR clamp-mounted to the desk "
+            "is a contaminant, including monitor arms, lamps, power strips, and cables. "
+            "A clamp-mounted monitor arm is a user-added accessory, NOT part of the desk design.\n"
             f"{soft_guidance}\n"
+            "IMPORTANT: each 'name' field must be a SHORT noun phrase (1-3 words) such as "
+            "'monitor arm', 'power strip', 'remote control'. Do NOT include locations or "
+            "full sentences in 'name'. Put spatial details in 'location' only.\n"
             "Return ONLY valid JSON:\n"
             "{\n"
             '  "has_generation_contaminants": false,\n'
@@ -198,6 +219,7 @@ class FurnitureAnalysisService:
                     {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}},
                 ]}],
                 max_tokens=500,
+                temperature=0,
                 response_format={"type": "json_object"},
             )
             parsed = json.loads(resp.choices[0].message.content.strip())
