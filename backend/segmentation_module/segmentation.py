@@ -81,7 +81,7 @@ class Sam3Segmenter:
         self,
         image,
         prompts: list[str],
-        threshold: float = 0.20,
+        threshold: float | None = 0.20,
     ) -> dict:
         """텍스트 프롬프트 리스트로 객체 마스크 생성 (SAM3 직접 호출).
 
@@ -92,7 +92,8 @@ class Sam3Segmenter:
         Args:
             image: PIL.Image 또는 numpy.ndarray (RGB).
             prompts: 짧은 명사구 리스트.
-            threshold: confidence score 컷오프 (proxy 의 post_process 기본과 동일).
+            threshold: confidence score 컷오프. None 이면 필터링 자체를 건너뛰고
+                       SAM3 가 뱉은 raw 결과(NaN 점수 박스 포함) 를 그대로 반환.
 
         Returns:
             {
@@ -138,6 +139,15 @@ class Sam3Segmenter:
         boxes = torch.cat(all_boxes, dim=0).cpu().float()
         scores = torch.cat(all_scores, dim=0).cpu().float()
         masks = torch.cat(all_masks, dim=0) if all_masks else None
+
+        # threshold=None: 필터링 건너뛰고 raw 결과 그대로 반환 (legacy proxy 동작 복원)
+        if threshold is None:
+            return {
+                "boxes": boxes,
+                "scores": scores,
+                "masks": masks,
+                "sam3_actual_prompts": actual_prompts,
+            }
 
         keep = scores > threshold
         return {
