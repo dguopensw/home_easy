@@ -239,6 +239,7 @@ class PipelineService:
             boundary_completion_info = None
             generation_mask_expansion_info = None
             boundary_completion_used = False
+            internal_holes_info = None
 
             # ── 10. 인페인팅 (필요 시) ────────────────────────────────────
             if has_major_obstacle or has_contaminants:
@@ -338,6 +339,22 @@ class PipelineService:
                         union_arr = obstacle_mask_arr
                     elif contaminant_mask_arr is not None:
                         union_arr = contaminant_mask_arr
+
+                    # 방식 A: 가구 마스크의 내부 구멍을 contaminant 후보로 보강.
+                    # GPT 가 누락한 베개/담요/소파 위 작은 물체 등을 마스크 수준에서 자동 캐치.
+                    internal_holes_mask_path = job_dir / "07_internal_holes_mask.png"
+                    internal_holes_info = self.segmentation.compute_internal_holes(
+                        final_mask_path, internal_holes_mask_path,
+                    )
+                    if (internal_holes_info.get("status") == "done"
+                            and internal_holes_info.get("coverage", 0) > 0):
+                        holes_arr = cv2.imread(str(internal_holes_mask_path), cv2.IMREAD_GRAYSCALE)
+                        if holes_arr is not None:
+                            if union_arr is not None:
+                                union_arr = np.maximum(union_arr, holes_arr)
+                            else:
+                                union_arr = holes_arr
+                            warnings.append("internal_mask_holes_added_as_contaminants")
 
                     if union_arr is not None:
                         union_mask_path = job_dir / "07_union_mask.png"
@@ -609,6 +626,7 @@ class PipelineService:
                     "sam3_info": sam3_info,
                     "contaminant_sam3_info": contaminant_sam3_info,
                     "inpainting_info": inpainting_info,
+                    "internal_holes_info": internal_holes_info,
                     "floor_cleanup_info": floor_cleanup_info,
                     "mask_refinement_info": mask_refinement_info,
                     "boundary_occlusion_info": boundary_occlusion_info,

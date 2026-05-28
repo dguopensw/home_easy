@@ -391,6 +391,64 @@ class SegmentationService:
             "warnings": feather_info.get("warnings", []),
         }
 
+    # ── 가구 마스크 내부 구멍 검출 (방식 A) ────────────────────────────────
+
+    @staticmethod
+    def compute_internal_holes(
+        mask_path: Path,
+        output_path: Path,
+        closing_kernel_ratio: float = 0.05,
+        min_hole_area_ratio: float = 0.0005,
+    ) -> dict:
+        """가구 마스크의 '이상적 실루엣' 안에 있는 구멍을 contaminant 후보로 검출.
+
+        흐름:
+          1) morphological closing 으로 가구의 외곽 실루엣을 메움
+          2) 실루엣 ∩ ¬(원본 마스크) = 내부 구멍
+          3) 너무 작은 노이즈는 제거 (min_hole_area_ratio 미만 컴포넌트)
+
+        외부 배경과 연결된 영역은 닫히지 않으므로 구멍으로 검출되지 않음 (의도된 동작).
+        """
+        import cv2
+        import numpy as np
+
+        mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+        if mask is None:
+            return {"status": "failed", "error": "cannot_read_mask",
+                    "hole_count": 0, "coverage": 0.0}
+
+        h, w = mask.shape
+        binary = (mask > 127).astype(np.uint8)
+
+        k = max(11, int(min(h, w) * closing_kernel_ratio))
+        if k % 2 == 0:
+            k += 1
+        kernel = np.ones((k, k), np.uint8)
+        closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
+        holes = ((closed > 0) & (binary == 0)).astype(np.uint8) * 255
+
+        num, labels, stats, _ = cv2.connectedComponentsWithStats(holes, connectivity=8)
+        min_area = int(h * w * min_hole_area_ratio)
+        filtered = np.zeros_like(holes)
+        kept = 0
+        for i in range(1, num):
+            if int(stats[i, cv2.CC_STAT_AREA]) >= min_area:
+                filtered = np.maximum(filtered, (labels == i).astype(np.uint8) * 255)
+                kept += 1
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(output_path), filtered)
+
+        coverage = float(np.count_nonzero(filtered) / (h * w))
+        return {
+            "status": "done",
+            "method": "morphological_closing_internal_holes",
+            "hole_count": kept,
+            "coverage": round(coverage, 4),
+            "closing_kernel_size": k,
+        }
+
     # ── 이미지 합성 헬퍼 ──────────────────────────────────────────────────
 
     @staticmethod
