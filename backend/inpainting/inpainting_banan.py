@@ -25,7 +25,7 @@ def _get_client():
 
 
 _FURNITURE_PROMPTS: dict[str, str] = {
-    "sofa":     "Fill the blank white area naturally with empty sofa cushions. Match the existing upholstery texture, color, and lighting. Do not add any objects.",
+    "sofa":     "Fill the blank white area naturally with empty sofa surface. Match the existing upholstery texture, color, and lighting. Do not add any objects.",
     "chair":    "Fill the blank white area naturally with an empty chair seat surface. Match the existing fabric texture, color, and lighting. Do not add any objects.",
     "desk":     "Fill the blank white area naturally with an empty desk surface. Match the existing wood texture, color, and lighting. Do not add any objects.",
     "table":    "Fill the blank white area naturally with an empty table surface. Match the existing material, color, and lighting. Do not add any objects.",
