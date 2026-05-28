@@ -153,6 +153,7 @@ class PipelineService:
             furniture_mask_info = self.segmentation.generate_sam3_furniture_mask_natural(
                 original_path, furniture_type, raw_mask_path,
                 title=title, description=description,
+                sam3_prompts=furniture_info.get("sam3_segmentation_prompts"),
             )
 
             if furniture_mask_info["status"] != "done":
