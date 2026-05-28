@@ -1102,6 +1102,20 @@
     const sam3El = $('sam3PromptContent');
     if (sam3El) {
       let html = '';
+
+      // 가구 마스킹 SAM3 프롬프트 (항상 표시 — 모든 요청마다 실행)
+      const pm = data.part_mask_info || {};
+      const fpromptsUsed = pm.prompts_used || [];
+      const factualPrompts = pm.sam3_actual_prompts || [];
+      if (fpromptsUsed.length || factualPrompts.length) {
+        html += `<div class="obstacle-box" style="margin-bottom:10px;border-left:3px solid #2563eb">
+          <h4 style="margin:0 0 6px">가구 마스킹 SAM3 프롬프트</h4>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">GPT가 만든 phrase: ${fpromptsUsed.map(p => `<code>${p}</code>`).join(', ')}</div>
+          ${factualPrompts.length ? `<div style="font-size:11px;color:#c2410c;margin-top:4px">SAM3 실제 입력: ${factualPrompts.map(p => `<code>${p}</code>`).join(', ')}</div>` : ''}
+          ${pm.status ? `<div style="font-size:11px;margin-top:4px">상태: <strong>${pm.status}</strong> | 부분 마스크 수: ${pm.valid_part_count ?? '-'} | 커버리지: ${pm.mask_coverage != null ? (pm.mask_coverage * 100).toFixed(1) + '%' : '-'}</div>` : ''}
+        </div>`;
+      }
+
       if (obs.has_major_obstacle || contAnal.has_generation_contaminants) {
         if (obs.has_major_obstacle) {
           const si = data.sam3_obstacle_info || {};

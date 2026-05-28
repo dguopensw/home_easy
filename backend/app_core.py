@@ -295,13 +295,41 @@ def classify_furniture_from_image(image_path: Path, title: str = "", description
     encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
     data_url = f"data:{mime_type};base64,{encoded}"
 
-    context = "What type of furniture is the main object in this image?\n"
+    context = (
+        "You are analyzing a furniture listing. The seller wrote a title/description AND "
+        "uploaded a photo. The photo may contain multiple pieces of furniture, but only ONE "
+        "is the item being sold. Use the listing text to identify which furniture item is "
+        "the seller's product, then return:\n"
+        "1) The furniture type (of the seller's item).\n"
+        "2) A list of short noun phrases that SAM3 should use to segment ONLY that target "
+        "furniture, INCLUDING any attached or visually-similar accessories that belong with "
+        "it (throw pillows, cushions, blankets, draped fabric) so they are masked as part of "
+        "the target furniture rather than left as holes. Do NOT include other furniture "
+        "items visible in the background.\n\n"
+    )
     if title:
         context += f"Listing title: {title}\n"
+    if description:
+        snippet = description.strip()
+        if len(snippet) > 600:
+            snippet = snippet[:600] + "..."
+        context += f"Listing description: {snippet}\n"
     valid = ", ".join(VALID_FURNITURE_TYPES)
     context += (
-        f"\nRespond with ONLY a JSON object: "
-        f'{{"furniture_type": "<one of: {valid}>", "confidence": "high|medium|low"}}'
+        "\nRules for sam3_segmentation_prompts:\n"
+        "- Each phrase must be a SHORT noun phrase (2-7 words), SAM3-compatible.\n"
+        "- Include 1-4 phrases. The first phrase MUST be the bare furniture type "
+        "(matching the type field).\n"
+        "- Add accessory-inclusive phrases only when the image actually shows pillows/"
+        "cushions/blankets/etc. resting on or attached to the target furniture.\n"
+        "- If the listing text disambiguates among multiple items in the photo "
+        "(e.g., '2-seater sofa' when both a sofa and chair are visible), let the phrases "
+        "reflect the target item.\n"
+        "- Examples: ['sofa', 'sofa with cushions and pillows', 'sofa with throw blanket'], "
+        "['bed', 'bed with pillows and blanket'], ['desk'] (no accessories needed).\n\n"
+        f"Respond with ONLY a JSON object: "
+        f'{{"furniture_type": "<one of: {valid}>", "confidence": "high|medium|low", '
+        '"sam3_segmentation_prompts": ["<short noun phrase>", ...]}}'
     )
 
     try:
@@ -311,7 +339,7 @@ def classify_furniture_from_image(image_path: Path, title: str = "", description
                 {"type": "text", "text": context},
                 {"type": "image_url", "image_url": {"url": data_url, "detail": "low"}},
             ]}],
-            max_tokens=60,
+            max_tokens=200,
         )
         raw = resp.choices[0].message.content.strip()
         match = re.search(r"\{.*\}", raw, flags=re.S)
@@ -320,16 +348,22 @@ def classify_furniture_from_image(image_path: Path, title: str = "", description
             ftype = parsed.get("furniture_type", "unknown").lower()
             if ftype not in VALID_FURNITURE_TYPES:
                 ftype = "unknown"
+            raw_prompts = parsed.get("sam3_segmentation_prompts") or []
+            if not isinstance(raw_prompts, list):
+                raw_prompts = []
+            sam3_prompts = [str(p).strip() for p in raw_prompts if isinstance(p, str) and p.strip()]
             return {
                 "furniture_type": ftype,
                 "confidence": parsed.get("confidence", "medium"),
                 "evidence": "gpt_vision",
+                "sam3_segmentation_prompts": sam3_prompts,
             }
     except Exception as e:
         _mark_openai_unavailable(e)
         logger.warning("Image furniture classification failed: %s", e)
 
-    return {"furniture_type": "unknown", "confidence": "low", "evidence": "classification_failed"}
+    return {"furniture_type": "unknown", "confidence": "low", "evidence": "classification_failed",
+            "sam3_segmentation_prompts": []}
 
 
 def reconcile_furniture_type(listing_type: dict, image_type: dict) -> dict:
@@ -337,36 +371,42 @@ def reconcile_furniture_type(listing_type: dict, image_type: dict) -> dict:
     it = image_type["furniture_type"]
     lc = listing_type["confidence"]
     ic = image_type["confidence"]
+    # image-based GPT vision actually saw the photo, so its SAM3 prompts are passed through
+    # regardless of which classification (listing/image) wins the type reconciliation.
+    image_sam3_prompts = image_type.get("sam3_segmentation_prompts") or []
+
+    def _result(furniture_type: str, confidence: str, warning: str | None) -> dict:
+        return {
+            "furniture_type": furniture_type,
+            "confidence": confidence,
+            "listing": lt,
+            "image": it,
+            "warning": warning,
+            "sam3_segmentation_prompts": image_sam3_prompts,
+        }
 
     if lt == it and lt != "unknown":
-        return {"furniture_type": lt, "confidence": "high",
-                "listing": lt, "image": it, "warning": None}
+        return _result(lt, "high", None)
 
     if lc == "high" and lt != "unknown" and (ic in ("low", "medium") or it == "unknown"):
-        return {"furniture_type": lt, "confidence": "high",
-                "listing": lt, "image": it, "warning": None}
+        return _result(lt, "high", None)
 
     if lc == "high" and lt != "unknown" and it != lt:
         warning = f"listing='{lt}' vs image='{it}' — using listing classification for target furniture"
-        return {"furniture_type": lt, "confidence": "high",
-                "listing": lt, "image": it, "warning": warning}
+        return _result(lt, "high", warning)
 
     if ic == "high" and it != "unknown" and (lt == "unknown" or lc == "low"):
-        return {"furniture_type": it, "confidence": "high",
-                "listing": lt, "image": it, "warning": None}
+        return _result(it, "high", None)
 
     if lt != "unknown" and it != "unknown" and lt != it:
         warning = f"listing='{lt}' vs image='{it}' — using image classification"
-        return {"furniture_type": it, "confidence": "medium",
-                "listing": lt, "image": it, "warning": warning}
+        return _result(it, "medium", warning)
 
     final = lt if lt != "unknown" else it
     if final == "unknown":
-        return {"furniture_type": "unknown", "confidence": "low",
-                "listing": lt, "image": it, "warning": None}
+        return _result("unknown", "low", None)
 
-    return {"furniture_type": final, "confidence": "medium",
-            "listing": lt, "image": it, "warning": None}
+    return _result(final, "medium", None)
 
 
 # ---------------------------------------------------------------------------

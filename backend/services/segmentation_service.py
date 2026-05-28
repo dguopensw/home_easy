@@ -25,8 +25,14 @@ class SegmentationService:
         title: str = "",
         description: str = "",
         debug_dir: Path | None = None,
+        sam3_prompts: list[str] | None = None,
     ) -> dict:
-        """SAM3로 가구 마스크를 생성합니다 (텍스트 프롬프트 기반)."""
+        """SAM3로 가구 마스크를 생성합니다 (텍스트 프롬프트 기반).
+
+        sam3_prompts: GPT-vision이 이미지·게시글 텍스트를 종합해 만든 SAM3 호환 짧은
+        명사구 리스트. 주어지면 ". "로 join해 한 번에 SAM3에 전달 (proxy가 split + union).
+        없으면 furniture_type 한 단어로 폴백.
+        """
         import cv2
         import numpy as np
 
@@ -51,8 +57,16 @@ class SegmentationService:
 
             pil_image = _PIL_Image.open(image_path).convert("RGB")
 
-            prompt = furniture_type if furniture_type != "unknown" else "furniture"
-            gsam.processor(images=pil_image, text=prompt + ".", return_tensors="pt")
+            cleaned_prompts = [p.strip().rstrip(".") for p in (sam3_prompts or []) if p and p.strip()]
+            if cleaned_prompts:
+                prompt = ". ".join(cleaned_prompts) + "."
+                prompts_used_log = cleaned_prompts
+            else:
+                base = furniture_type if furniture_type != "unknown" else "furniture"
+                prompt = base + "."
+                prompts_used_log = [base]
+
+            gsam.processor(images=pil_image, text=prompt, return_tensors="pt")
 
             last_state = gsam.processor._last_state or {}
             boxes = last_state.get("boxes")
@@ -61,7 +75,10 @@ class SegmentationService:
             if boxes is None or len(boxes) == 0 or masks is None or len(masks) == 0:
                 return {"status": "failed", "error": "no_detections",
                         "masking_family": masking_family, "valid_part_count": 0,
-                        "prompts_used": [prompt]}
+                        "prompts_used": prompts_used_log,
+                        "sam3_actual_prompts": list(
+                            getattr(gsam.processor, "_last_sam3_prompts", []) or []
+                        )}
 
             union_mask = np.zeros((h, w), dtype=np.uint8)
             added = 0
@@ -76,7 +93,10 @@ class SegmentationService:
             if added == 0:
                 return {"status": "failed", "error": "no_valid_masks",
                         "masking_family": masking_family, "valid_part_count": 0,
-                        "prompts_used": [prompt]}
+                        "prompts_used": prompts_used_log,
+                        "sam3_actual_prompts": list(
+                            getattr(gsam.processor, "_last_sam3_prompts", []) or []
+                        )}
 
             output_mask_path.parent.mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(output_mask_path), union_mask)
@@ -86,13 +106,16 @@ class SegmentationService:
             bbox = ([int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]
                     if len(xs) > 0 else None)
 
-            logger.info("SAM3 mask done: family=%s prompt=%s valid_masks=%d coverage=%.3f",
-                        masking_family, prompt, added, mask_coverage)
+            logger.info("SAM3 mask done: family=%s prompts=%s valid_masks=%d coverage=%.3f",
+                        masking_family, prompts_used_log, added, mask_coverage)
             return {
                 "status": "done",
                 "method": "sam3_natural_direct_mask",
                 "masking_family": masking_family,
-                "prompts_used": [prompt],
+                "prompts_used": prompts_used_log,
+                "sam3_actual_prompts": list(
+                    getattr(gsam.processor, "_last_sam3_prompts", []) or []
+                ),
                 "valid_part_count": added,
                 "mask_coverage": round(mask_coverage, 4),
                 "bbox": bbox,
