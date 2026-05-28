@@ -228,6 +228,7 @@ def select_best_image_gpt(title: str, description: str, image_urls: list[str]) -
             model=VISION_MODEL,
             messages=[{"role": "user", "content": [{"type": "text", "text": prompt}] + image_content}],
             max_tokens=10,
+            temperature=0,
         )
         answer = resp.choices[0].message.content.strip()
         idx = int(re.search(r"\d+", answer).group())
@@ -356,6 +357,7 @@ def classify_furniture_from_image(image_path: Path, title: str = "", description
                 {"type": "image_url", "image_url": {"url": data_url, "detail": "low"}},
             ]}],
             max_tokens=200,
+            temperature=0,
         )
         raw = resp.choices[0].message.content.strip()
         match = re.search(r"\{.*\}", raw, flags=re.S)
@@ -544,6 +546,7 @@ def measure_dimensions(
                 ]},
             ],
             max_tokens=500,
+            temperature=0,
         )
     except Exception as e:
         reason = _mark_openai_unavailable(e) or "openai_dimension_call_failed"

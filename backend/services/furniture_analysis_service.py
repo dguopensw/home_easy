@@ -68,6 +68,7 @@ class FurnitureAnalysisService:
                     {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}},
                 ]}],
                 max_tokens=400,
+                temperature=0,
                 response_format={"type": "json_object"},
             )
             parsed = json.loads(resp.choices[0].message.content.strip())
@@ -218,6 +219,7 @@ class FurnitureAnalysisService:
                     {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}},
                 ]}],
                 max_tokens=500,
+                temperature=0,
                 response_format={"type": "json_object"},
             )
             parsed = json.loads(resp.choices[0].message.content.strip())
