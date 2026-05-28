@@ -240,6 +240,7 @@ class PipelineService:
             generation_mask_expansion_info = None
             boundary_completion_used = False
             internal_holes_info = None
+            boundary_inpainting_info = None
 
             # ── 10. 인페인팅 (필요 시) ────────────────────────────────────
             if has_major_obstacle or has_contaminants:
@@ -313,6 +314,7 @@ class PipelineService:
                             original_path, lama_src_mask, boundary_completed_path,
                             furniture_type=furniture_type,
                         )
+                        boundary_inpainting_info = bc_result
 
                         if bc_result.get("status") == "done":
                             boundary_completion_used = True
@@ -626,6 +628,7 @@ class PipelineService:
                     "sam3_info": sam3_info,
                     "contaminant_sam3_info": contaminant_sam3_info,
                     "inpainting_info": inpainting_info,
+                    "boundary_inpainting_info": boundary_inpainting_info,
                     "internal_holes_info": internal_holes_info,
                     "floor_cleanup_info": floor_cleanup_info,
                     "mask_refinement_info": mask_refinement_info,
