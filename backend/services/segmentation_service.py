@@ -62,8 +62,9 @@ class SegmentationService:
                 base = furniture_type if furniture_type != "unknown" else "furniture"
                 prompts_used_log = [base]
 
-            # 가구 마스킹: confidence threshold 없이 모든 detection 수용 (cov 필터로 거름)
-            seg = segmenter.segment_text(pil_image, prompts_used_log, threshold=-1.0)
+            # 가구 마스킹: threshold=None 으로 raw 결과 그대로 수용 (legacy proxy 동작과 동일)
+            # NaN 점수 박스도 포함 — 이후 cov 필터 (0.001~0.95) 가 노이즈 거름
+            seg = segmenter.segment_text(pil_image, prompts_used_log, threshold=None)
             boxes = seg["boxes"]
             masks = seg["masks"]
             actual_prompts = seg["sam3_actual_prompts"]
