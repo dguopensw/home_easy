@@ -25,17 +25,17 @@ def _get_pipe():
 
 
 _FURNITURE_PROMPTS: dict[str, str] = {
-    "sofa":     "empty fabric sofa cushions, smooth upholstery surface, matching the existing sofa texture and color, photorealistic, consistent lighting with the rest of the scene",
-    "chair":    "empty chair seat with smooth fabric, matching the existing chair texture and color, photorealistic, consistent lighting",
-    "desk":     "empty desk surface, smooth wood texture, matching the existing desk material and color, photorealistic, consistent lighting",
-    "table":    "empty table surface, smooth texture, matching the existing table material and color, photorealistic, consistent lighting",
-    "bed":      "empty bed with smooth flat bedding, matching the existing sheet texture and color, photorealistic, consistent lighting",
-    "wardrobe": "empty floor in front of wardrobe, matching the existing floor texture, photorealistic, consistent lighting",
-    "drawer":   "empty drawer front surface, smooth texture, matching the existing material and color, photorealistic, consistent lighting",
-    "shelf":    "empty shelf with smooth surface, matching the existing shelf texture and color, photorealistic, consistent lighting",
+    "sofa":     "smooth continuous sofa upholstery fabric, plain unobstructed body surface, matching the existing sofa texture and color, photorealistic, consistent lighting with the rest of the scene",
+    "chair":    "smooth continuous chair upholstery fabric, plain unobstructed body surface, matching the existing chair texture and color, photorealistic, consistent lighting",
+    "desk":     "smooth continuous desk top surface, plain unobstructed, matching the existing desk wood material and color, photorealistic, consistent lighting",
+    "table":    "smooth continuous table top surface, plain unobstructed, matching the existing table material and color, photorealistic, consistent lighting",
+    "bed":      "smooth flat bed sheet surface, plain unobstructed bedding, matching the existing sheet texture and color, photorealistic, consistent lighting",
+    "wardrobe": "smooth floor or wall behind wardrobe, matching the existing texture, photorealistic, consistent lighting",
+    "drawer":   "smooth drawer front panel, plain unobstructed, matching the existing material and color, photorealistic, consistent lighting",
+    "shelf":    "smooth empty shelf panel surface, plain unobstructed, matching the existing shelf texture and color, photorealistic, consistent lighting",
 }
 
-_DEFAULT_PROMPT = "empty clean furniture surface, smooth texture matching the surroundings, photorealistic, consistent lighting"
+_DEFAULT_PROMPT = "smooth continuous furniture body surface, plain unobstructed, matching the surroundings, photorealistic, consistent lighting"
 
 
 def _get_prompt(furniture_type: str) -> str:

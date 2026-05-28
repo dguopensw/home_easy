@@ -25,17 +25,54 @@ def _get_client():
 
 
 _FURNITURE_PROMPTS: dict[str, str] = {
-    "sofa":     "Fill the blank white area naturally with empty sofa surface. Match the existing upholstery texture, color, and lighting. Do not add any objects.",
-    "chair":    "Fill the blank white area naturally with an empty chair seat surface. Match the existing fabric texture, color, and lighting. Do not add any objects.",
-    "desk":     "Fill the blank white area naturally with an empty desk surface. Match the existing wood texture, color, and lighting. Do not add any objects.",
-    "table":    "Fill the blank white area naturally with an empty table surface. Match the existing material, color, and lighting. Do not add any objects.",
-    "bed":      "Fill the blank white area naturally with smooth flat bedding. Match the existing sheet texture, color, and lighting. Do not add any objects.",
-    "wardrobe": "Fill the blank white area naturally with the floor or wall behind. Match the existing texture, color, and lighting. Do not add any objects.",
-    "drawer":   "Fill the blank white area naturally with a smooth drawer front surface. Match the existing material, color, and lighting. Do not add any objects.",
-    "shelf":    "Fill the blank white area naturally with an empty shelf surface. Match the existing texture, color, and lighting. Do not add any objects.",
+    "sofa": (
+        "Show only the smooth, continuous sofa upholstery fabric across this blank area, "
+        "matching the visible sofa body's texture, color, and lighting. "
+        "The masked area should look like a flat unobstructed section of the sofa body itself. "
+        "Do NOT draw cushions, pillows, blankets, decorations, or any objects."
+    ),
+    "chair": (
+        "Show only the smooth, continuous chair upholstery fabric across this blank area, "
+        "matching the visible chair body's texture, color, and lighting. "
+        "Do NOT draw cushions, pillows, decorations, or any objects."
+    ),
+    "desk": (
+        "Show only the smooth, continuous desk top across this blank area, "
+        "matching the visible desk's wood or material texture, color, and lighting. "
+        "Do NOT draw items, papers, devices, decorations, or any objects."
+    ),
+    "table": (
+        "Show only the smooth, continuous table top across this blank area, "
+        "matching the visible table material, color, and lighting. "
+        "Do NOT draw items, decorations, or any objects."
+    ),
+    "bed": (
+        "Show only the smooth, flat bed sheet surface across this blank area, "
+        "matching the visible sheet's texture, color, and lighting. "
+        "Do NOT draw pillows, blankets, folds, or any objects."
+    ),
+    "wardrobe": (
+        "Show only the floor or wall behind the wardrobe across this blank area, "
+        "matching the visible texture, color, and lighting. "
+        "Do NOT draw any objects."
+    ),
+    "drawer": (
+        "Show only the smooth drawer front panel across this blank area, "
+        "matching the visible material texture, color, and lighting. "
+        "Do NOT draw handles, items, or any objects."
+    ),
+    "shelf": (
+        "Show only the empty shelf panel surface across this blank area, "
+        "matching the visible shelf material, color, and lighting. "
+        "Do NOT draw books, items, decorations, or any objects."
+    ),
 }
 
-_DEFAULT_PROMPT = "Fill the blank white area naturally with a clean surface that matches the surrounding furniture texture, color, and lighting. Do not add any objects."
+_DEFAULT_PROMPT = (
+    "Show only the smooth, continuous furniture body surface across this blank area, "
+    "matching the surrounding texture, color, and lighting. "
+    "Do NOT draw any objects."
+)
 
 _MODEL = os.environ.get("NANO_BANANA_MODEL", "gemini-3-pro-image-preview")
 
