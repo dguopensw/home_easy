@@ -446,12 +446,6 @@ def get_segmenter(device: str = "cpu"):
     return _segmenter
 
 
-def _get_gsam(segmenter):
-    if hasattr(segmenter, "primary"):
-        return segmenter.primary
-    return segmenter
-
-
 # ---------------------------------------------------------------------------
 # 치수 추정 (GPT Vision)
 # ---------------------------------------------------------------------------
