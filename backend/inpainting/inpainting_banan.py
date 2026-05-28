@@ -114,12 +114,13 @@ def inpaint_with_banana(
         mask = Image.open(mask_path).convert("L")
         w, h = image.size
 
-        # 마스크 강제 이진화
+        # 마스크 강제 이진화 — 원본 (BrushNet 합성용, 가구 본체 침범 방지)
         mask_arr = np.array(mask)
         mask_bin = (mask_arr > 127).astype(np.uint8) * 255
-        mask = Image.fromarray(mask_bin, mode="L")
+        original_mask = Image.fromarray(mask_bin, mode="L")
 
-        # Dilation: 객체 경계 + 그림자/잔상 영역까지 포함
+        # Dilation: 그림자/경계까지 자연스러운 인페인팅을 위해 확장 (Banana 입력용)
+        mask = original_mask
         if mask_dilation_px > 0:
             filter_size = max(3, mask_dilation_px * 2 + 1)
             if filter_size % 2 == 0:
@@ -158,8 +159,8 @@ def inpaint_with_banana(
         # 원본 크기로 복원
         result = result.resize((w, h), Image.LANCZOS)
 
-        # BrushNet 합성: hard mask + 가장자리 미세 블러
-        hard_mask_arr = (np.array(mask) > 127).astype(np.uint8) * 255
+        # BrushNet 합성: dilation 안 된 원본 마스크 사용 (가구 본체 영역 100% 보존)
+        hard_mask_arr = (np.array(original_mask) > 127).astype(np.uint8) * 255
         hard_mask = Image.fromarray(hard_mask_arr, mode="L")
         composite_mask = hard_mask.filter(ImageFilter.GaussianBlur(radius=1.5))
 
