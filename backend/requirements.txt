@@ -1,0 +1,44 @@
+# Web framework (backend)
+fastapi
+uvicorn[standard]
+sqlalchemy[asyncio]
+asyncpg
+alembic
+python-dotenv
+sse-starlette
+httpx
+pydantic-settings
+
+# AI / OpenAI
+openai
+
+# Scraping
+requests
+beautifulsoup4
+
+# Image processing
+Pillow
+opencv-python
+rembg
+onnxruntime
+
+# ML / segmentation
+pycocotools
+einops
+huggingface_hub
+iopath
+timm
+ftfy
+regex
+
+# LaMa inpainting
+simple-lama-inpainting
+
+# Flux-Fill inpainting
+diffusers
+transformers
+accelerate
+sentencepiece
+
+# Nano Banana (Gemini) inpainting
+google-genai

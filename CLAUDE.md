@@ -537,3 +537,18 @@ The Operations stage will eventually include:
 - Application code: Workspace root (NEVER in aidlc-docs/)
 - Documentation: aidlc-docs/ only
 - Project structure: See code-generation.md for patterns by project type
+
+---
+
+## 하네스: OSSP 최종보고서
+
+**목표:** home_easy 레포 분석 → OSSP 최종보고서 문서 세트 자동 생성
+
+**트리거:** "OSSP 보고서", "최종보고서 작성", "보고서 업데이트", "HTML 보고서 생성", "레포 분석", "오픈소스 인벤토리" 등 보고서 관련 요청 시 `ossp-report` 스킬을 사용하라. 단순 질문은 직접 응답 가능.
+
+**변경 이력:**
+| 날짜 | 변경 내용 | 대상 | 사유 |
+|------|----------|------|------|
+| 2026-05-22 | 초기 구성 | 전체 | OSSP 최종보고서 작성 자동화 |
+| 2026-05-22 | 에이전트 고도화 (품질 기준·금지사항 강화) | repo-analyst.md, report-writer.md, report-reviewer.md | 보고서 밀도 강화 요청 |
+| 2026-05-22 | SKILL.md 9단계 워크플로우로 확장 | skills/ossp-report/SKILL.md | 단계별 품질 기준 명시 |

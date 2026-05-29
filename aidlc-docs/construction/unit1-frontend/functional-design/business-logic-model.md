@@ -15,7 +15,8 @@ UrlInputPage
   → [BR-01-1] 빈 URL → 흔들림 애니메이션, 중단
   → [BR-01-2] 미지원 플랫폼 → 에러 메시지, 중단
   → POST /furniture/gen/start → { jobId }
-  → navigate('/LoadingPage', { state: { jobId } })
+  → SSE 연결 시작: GET /furniture/gen/status/{jobId}
+  → SSE 연결 완료 후 navigate('/LoadingPage', { state: { jobId } })
 
 LoadingPage
   → useLocation().state에서 jobId 수신
@@ -62,10 +63,11 @@ ARPage
 ## LoadingPage SSE 처리 로직
 
 ```
+(SSE는 UrlInputPage에서 이미 연결됨 — LoadingPage 진입 전 연결 완료)
 마운트
   │
   ▼
-EventSource('/furniture/gen/status/{jobId}') 생성
+기존 EventSource 수신 시작 ('/furniture/gen/status/{jobId}')
   │
   ├─ onmessage (progress) → { step, progress } → 상태 업데이트
   │     └─ 단계별 UI: 완료(✓) / 현재(바운싱 dot) / 대기(흐린 아이콘)

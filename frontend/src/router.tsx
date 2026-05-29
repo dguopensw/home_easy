@@ -8,6 +8,7 @@ const ModelPreviewPage = lazy(() => import('@/pages/PreviewPage/ModelPreviewPage
 const ARPage           = lazy(() => import('@/pages/ARPage/ARPage'))
 const HistoryPage      = lazy(() => import('@/pages/HistoryPage/HistoryPage'))
 const ResultPage       = lazy(() => import('@/pages/ResultPage/ResultPage'))
+const CrawlingResultPage = lazy(() => import('@/pages/CrawlingResultPage/CrawlingResultPage'))
 
 function SuspenseLayout() {
   return (
@@ -23,8 +24,9 @@ export const router = createBrowserRouter([
     children: [
       { path: '/',          element: <Navigate to="/home" replace /> },
       { path: '/home',      element: <HomePage /> },
-      { path: '/url-input', element: <UrlInputPage /> },
-      { path: '/loading',   element: <LoadingPage /> },
+      { path: '/url-input',        element: <UrlInputPage /> },
+      { path: '/crawling-result', element: <CrawlingResultPage /> },
+      { path: '/loading',          element: <LoadingPage /> },
       { path: '/preview',   element: <ModelPreviewPage /> },
       { path: '/ar',        element: <ARPage /> },
       { path: '/history',   element: <HistoryPage /> },

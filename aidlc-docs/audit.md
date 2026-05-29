@@ -16,6 +16,14 @@
 
 ---
 
+## CONSTRUCTION - Unit 2 Backend - 뼈대 생성
+**Timestamp**: 2026-05-15T13:30:00Z
+**User Input**: "이제 백엔드 초기 세팅하고 싶어 aidlc 계속해서 사용해서 / 아 근데 나 로직은 팀원이 짜는 거라서 진짜 틀만 만들고 싶은데? / 응 도커 포함해서 만들어줘"
+**AI Response**: Functional Design/NFR 스킵. pip+requirements.txt, PostgreSQL, Docker 선택. 백엔드 skeleton 생성 완료.
+**Context**: CONSTRUCTION PHASE - Unit 2 Backend skeleton (설계 단계 스킵, 팀원 로직 구현 예정)
+
+---
+
 ## INCEPTION - Workspace Detection
 **Timestamp**: 2026-05-09T00:01:00Z
 **User Input**: (no additional input - proceeding with workspace scan)

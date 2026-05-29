@@ -19,12 +19,13 @@ export default function UrlInputPage() {
   }
 
   const handleSubmit = () => {
-    if (!url.trim()) {
+    const trimmedUrl = url.trim()
+    if (!trimmedUrl) {
       triggerShake()
       inputRef.current?.focus()
       return
     }
-    navigate('/loading', { state: { jobId: 'mock-job-id', sourceUrl: url } })
+    navigate('/crawling-result', { state: { sourceUrl: trimmedUrl } })
   }
 
   return (
@@ -127,7 +128,7 @@ export default function UrlInputPage() {
             opacity: url.trim() ? 1 : 0.5,
           }}
         >
-          3D 모델 생성하기
+          이미지 가져오기
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
             <line x1="5" y1="12" x2="19" y2="12" />
             <polyline points="12 5 19 12 12 19" />

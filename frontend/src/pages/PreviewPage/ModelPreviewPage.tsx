@@ -93,7 +93,7 @@ export default function ModelPreviewPage() {
             className="mx-[20px] rounded-[24px] overflow-hidden relative"
             style={{ background: 'var(--color-surface-2)', height: 320 }}
           >
-            {/* @ts-expect-error model-viewer 웹 컴포넌트 */}
+            {/* @ts-ignore model-viewer 웹 컴포넌트 */}
             <model-viewer
               ref={mvRef}
               src={glbUrl}
@@ -210,7 +210,7 @@ export default function ModelPreviewPage() {
       {/* CTA */}
       <div className="px-[20px] pb-[36px] pt-[16px] flex-shrink-0">
         <button
-          onClick={() => navigate('/ar', { state: { glbUrl, sourceUrl } })}
+          onClick={() => navigate('/ar', { state: { glbUrl, dimensions, sourceUrl } })}
           data-testid="preview-ar-button"
           className="w-full py-[17px] rounded-[18px] text-white text-[16px] font-bold flex items-center justify-center gap-[10px]"
           style={{
