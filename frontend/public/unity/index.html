@@ -4,34 +4,56 @@
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>Unity Web Player | IWantGoHome</title>
-    <link rel="shortcut icon" href="TemplateData/favicon.ico">
-    <link rel="stylesheet" href="TemplateData/style.css">
+    <style>
+      html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+      #unity-container { position: relative; width: 100vw; height: 100vh; }
+      #webcam-video {
+        position: absolute; top: 0; left: 0;
+        width: 100%; height: 100%;
+        object-fit: cover; z-index: 1;
+        image-rendering: crisp-edges;
+      }
+      #unity-canvas {
+        position: absolute; top: 0; left: 0;
+        width: 100%; height: 100%;
+        z-index: 2; opacity: 0; pointer-events: none;
+      }
+      #composite-canvas {
+        position: absolute; top: 0; left: 0;
+        width: 100%; height: 100%;
+        z-index: 5;
+        /* ✅ 클릭/터치를 Unity canvas로 통과시킴 */
+        pointer-events: none;
+      }
+      /* ✅ Unity canvas가 실제 입력 받음 */
+      #unity-input-layer {
+        position: absolute; top: 0; left: 0;
+        width: 100%; height: 100%;
+        z-index: 6;
+        opacity: 0;
+      }
+      #unity-loading-bar { position: absolute; z-index: 100; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+      #unity-warning { position: absolute; z-index: 200; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; text-align: center; border-radius: 5px; }
+    </style>
   </head>
   <body>
-    <div id="unity-container" class="unity-desktop">
-      <canvas id="unity-canvas" width=960 height=600 tabindex="-1"></canvas>
+    <div id="unity-container">
+      <video id="webcam-video" autoplay playsinline muted></video>
+      <canvas id="unity-canvas"></canvas>
+      <canvas id="composite-canvas"></canvas>
+      <div id="unity-warning"></div>
       <div id="unity-loading-bar">
-        <div id="unity-logo"></div>
-        <div id="unity-progress-bar-empty">
-          <div id="unity-progress-bar-full"></div>
+        <div id="unity-progress-bar-empty" style="width:200px;height:20px;background:rgba(255,255,255,0.2);">
+          <div id="unity-progress-bar-full" style="width:0%;height:100%;background:white;"></div>
         </div>
       </div>
-      <div id="unity-warning"> </div>
-      <div id="unity-footer">
-        <div id="unity-logo-title-footer"></div>
-        <div id="unity-fullscreen-button"></div>
-        <div id="unity-build-title">IWantGoHome</div>
-      </div>
     </div>
-    <script>
-      var canvas = document.querySelector("#unity-canvas");
 
-      // Shows a temporary message banner/ribbon for a few seconds, or
-      // a permanent error message on top of the canvas if type=='error'.
-      // If type=='warning', a yellow highlight color is used.
-      // Modify or remove this function to customize the visually presented
-      // way that non-critical warnings and error messages are presented to the
-      // user.
+    <script>
+      const unityCanvas = document.querySelector("#unity-canvas");
+      const compCanvas  = document.querySelector("#composite-canvas");
+      const webcamVideo = document.querySelector("#webcam-video");
+
       function unityShowBanner(msg, type) {
         var warningBanner = document.querySelector("#unity-warning");
         function updateBannerVisibility() {
@@ -42,92 +64,168 @@
         warningBanner.appendChild(div);
         if (type == 'error') div.style = 'background: red; padding: 10px;';
         else {
-          if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
-          setTimeout(function() {
-            warningBanner.removeChild(div);
-            updateBannerVisibility();
-          }, 5000);
+          if (type == 'warning') div.style = 'background: yellow; color: black; padding: 10px;';
+          setTimeout(function() { warningBanner.removeChild(div); updateBannerVisibility(); }, 5000);
         }
         updateBannerVisibility();
       }
 
-      var buildUrl = "Build";
-      var loaderUrl = buildUrl + "/2605141.loader.js";
-      var config = {
-        arguments: [],
-        dataUrl: buildUrl + "/2605141.data",
-        frameworkUrl: buildUrl + "/2605141.framework.js",
-        codeUrl: buildUrl + "/2605141.wasm",
-        streamingAssetsUrl: "StreamingAssets",
-        companyName: "DefaultCompany",
-        productName: "IWantGoHome",
-        productVersion: "1.0.0",
-        showBanner: unityShowBanner,
-        // errorHandler: function(err, url, line) {
-        //    alert("error " + err + " occurred at line " + line);
-        //    // Return 'true' if you handled this error and don't want Unity
-        //    // to process it further, 'false' otherwise.
-        //    return true;
-        // },
-      };
+      function startGPUCompositing() {
+        const gl = compCanvas.getContext('webgl2') || compCanvas.getContext('webgl');
+        if (!gl) return;
 
-      // By default, Unity keeps WebGL canvas render target size matched with
-      // the DOM size of the canvas element (scaled by window.devicePixelRatio)
-      // Set this to false if you want to decouple this synchronization from
-      // happening inside the engine, and you would instead like to size up
-      // the canvas DOM size and WebGL render target sizes yourself.
-      // config.matchWebGLToCanvasSize = false;
+        const vsSource = `
+          attribute vec2 a_pos;
+          varying vec2 v_uv;
+          void main() {
+            v_uv = vec2(a_pos.x * 0.5 + 0.5, 0.5 - a_pos.y * 0.5);
+            gl_Position = vec4(a_pos, 0.0, 1.0);
+          }
+        `;
+        const fsSource = `
+          precision mediump float;
+          uniform sampler2D u_unity;
+          varying vec2 v_uv;
+          void main() {
+            vec4 c = texture2D(u_unity, v_uv);
+            float brightness = max(max(c.r, c.g), c.b);
+            float alpha = step(0.02, brightness);
+            gl_FragColor = vec4(c.rgb, alpha);
+          }
+        `;
 
-      // If you would like all file writes inside Unity Application.persistentDataPath
-      // directory to automatically persist so that the contents are remembered when
-      // the user revisits the site the next time, uncomment the following line:
-      // config.autoSyncPersistentDataPath = true;
-      // This autosyncing is currently not the default behavior to avoid regressing
-      // existing user projects that might rely on the earlier manual
-      // JS_FileSystem_Sync() behavior, but in future Unity version, this will be
-      // expected to change.
+        function compileShader(type, src) {
+          const s = gl.createShader(type);
+          gl.shaderSource(s, src);
+          gl.compileShader(s);
+          return s;
+        }
 
-      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        // Mobile device style: fill the whole browser client area with the game canvas:
+        const prog = gl.createProgram();
+        gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, vsSource));
+        gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, fsSource));
+        gl.linkProgram(prog);
+        gl.useProgram(prog);
 
-        var meta = document.createElement('meta');
-        meta.name = 'viewport';
-        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
-        document.getElementsByTagName('head')[0].appendChild(meta);
-        document.querySelector("#unity-container").className = "unity-mobile";
-        canvas.className = "unity-mobile";
+        const buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER,
+          new Float32Array([-1,-1, 1,-1, -1,1, 1,1]),
+          gl.STATIC_DRAW
+        );
+        const posLoc = gl.getAttribLocation(prog, 'a_pos');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 
-        // To lower canvas resolution on mobile devices to gain some
-        // performance, uncomment the following line:
-        // config.devicePixelRatio = 1;
+        const tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.uniform1i(gl.getUniformLocation(prog, 'u_unity'), 0);
 
-      } else {
-        // Desktop style: Render the game canvas in a window that can be maximized to fullscreen:
-        canvas.style.width = "960px";
-        canvas.style.height = "600px";
+        const dpr = window.devicePixelRatio || 1;
+
+        function render() {
+          const w = window.innerWidth;
+          const h = window.innerHeight;
+
+          // ✅ devicePixelRatio 적용으로 선명도 개선
+          const pw = Math.floor(w * dpr);
+          const ph = Math.floor(h * dpr);
+
+          if (compCanvas.width !== pw || compCanvas.height !== ph) {
+            compCanvas.width  = pw;
+            compCanvas.height = ph;
+            gl.viewport(0, 0, pw, ph);
+          }
+
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+
+          try {
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, unityCanvas);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+          } catch(_) {}
+
+          requestAnimationFrame(render);
+        }
+
+        render();
+        console.log('✅ GPU 컴포지터 시작, DPR:', dpr);
       }
 
-      document.querySelector("#unity-loading-bar").style.display = "block";
+      const config = {
+        dataUrl:            "/unity/Build/26052910.data",
+        frameworkUrl:       "/unity/Build/26052910.framework.js",
+        codeUrl:            "/unity/Build/26052910.wasm",
+        streamingAssetsUrl: "/unity/StreamingAssets",
+        companyName:    "DefaultCompany",
+        productName:    "IReallyWantGoHome",
+        productVersion: "1.0.0",
+        showBanner: unityShowBanner,
+        webglContextAttributes: {
+          alpha:                true,
+          preserveDrawingBuffer: true,
+          antialias:            false,
+          stencil:              false,
+          depth:                true
+        },
+      };
 
-      var script = document.createElement("script");
-      script.src = loaderUrl;
-      script.onload = () => {
-        createUnityInstance(canvas, config, (progress) => {
-          document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
-              }).then((unityInstance) => {
-                document.querySelector("#unity-loading-bar").style.display = "none";
-                document.querySelector("#unity-fullscreen-button").onclick = () => {
-                  unityInstance.SetFullscreen(1);
-                };
+      function initWebcam() {
+        navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width:  { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30 }
+          }
+        })
+        .then((stream) => {
+          webcamVideo.srcObject = stream;
+          const settings = stream.getVideoTracks()[0].getSettings();
+          console.warn(`카메라: ${settings.width}x${settings.height}`);
+          webcamVideo.onloadedmetadata = () => loadUnity();
+        })
+        .catch((err) => {
+          console.warn("카메라 오류:", err);
+          loadUnity();
+        });
+      }
 
-              }).catch((message) => {
-                alert(message);
-              });
-            };
+      function loadUnity() {
+        const script = document.createElement("script");
+        script.src = "/unity/Build/26052910.loader.js";
+        script.onerror = () => console.error("❌ loader.js 실패");
+        script.onload = () => {
+          createUnityInstance(unityCanvas, config, (progress) => {
+            document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
+          }).then((unityInstance) => {
+            window.unityInstance = unityInstance;
+            document.querySelector("#unity-loading-bar").style.display = "none";
 
-      document.body.appendChild(script);
+            // ✅ Unity canvas를 실제 화면 해상도로 설정
+            const dpr = window.devicePixelRatio || 1;
+            unityCanvas.style.width  = '100%';
+            unityCanvas.style.height = '100%';
+            unityCanvas.style.opacity = '0';
+            // ✅ 터치/클릭 직접 Unity canvas로
+            unityCanvas.style.pointerEvents = 'auto';
 
+            startGPUCompositing();
+            window.parent.postMessage('unity:ready', '*');
+          }).catch(err => { console.error("❌ Unity 실패:", err); });
+        };
+        document.body.appendChild(script);
+      }
+
+      initWebcam();
     </script>
   </body>
 </html>
