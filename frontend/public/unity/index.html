@@ -4,7 +4,6 @@
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>Unity Web Player | IWantGoHome</title>
-<<<<<<< HEAD
     <style>
       html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
       #unity-container { position: relative; width: 100vw; height: 100vh; }
@@ -55,36 +54,6 @@
       const compCanvas  = document.querySelector("#composite-canvas");
       const webcamVideo = document.querySelector("#webcam-video");
 
-=======
-    <link rel="shortcut icon" href="TemplateData/favicon.ico">
-    <link rel="stylesheet" href="TemplateData/style.css">
-  </head>
-  <body>
-    <div id="unity-container" class="unity-desktop">
-      <canvas id="unity-canvas" width=960 height=600 tabindex="-1"></canvas>
-      <div id="unity-loading-bar">
-        <div id="unity-logo"></div>
-        <div id="unity-progress-bar-empty">
-          <div id="unity-progress-bar-full"></div>
-        </div>
-      </div>
-      <div id="unity-warning"> </div>
-      <div id="unity-footer">
-        <div id="unity-logo-title-footer"></div>
-        <div id="unity-fullscreen-button"></div>
-        <div id="unity-build-title">IWantGoHome</div>
-      </div>
-    </div>
-    <script>
-      var canvas = document.querySelector("#unity-canvas");
-
-      // Shows a temporary message banner/ribbon for a few seconds, or
-      // a permanent error message on top of the canvas if type=='error'.
-      // If type=='warning', a yellow highlight color is used.
-      // Modify or remove this function to customize the visually presented
-      // way that non-critical warnings and error messages are presented to the
-      // user.
->>>>>>> 0072a9e (임시 커밋)
       function unityShowBanner(msg, type) {
         var warningBanner = document.querySelector("#unity-warning");
         function updateBannerVisibility() {
@@ -95,21 +64,12 @@
         warningBanner.appendChild(div);
         if (type == 'error') div.style = 'background: red; padding: 10px;';
         else {
-<<<<<<< HEAD
           if (type == 'warning') div.style = 'background: yellow; color: black; padding: 10px;';
           setTimeout(function() { warningBanner.removeChild(div); updateBannerVisibility(); }, 5000);
-=======
-          if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
-          setTimeout(function() {
-            warningBanner.removeChild(div);
-            updateBannerVisibility();
-          }, 5000);
->>>>>>> 0072a9e (임시 커밋)
         }
         updateBannerVisibility();
       }
 
-<<<<<<< HEAD
       function startGPUCompositing() {
         const gl = compCanvas.getContext('webgl2') || compCanvas.getContext('webgl');
         if (!gl) return;
@@ -201,9 +161,9 @@
       }
 
       const config = {
-        dataUrl:            "/unity/Build/26052910.data",
-        frameworkUrl:       "/unity/Build/26052910.framework.js",
-        codeUrl:            "/unity/Build/26052910.wasm",
+        dataUrl:            "/unity/Build/url1.data",
+        frameworkUrl:       "/unity/Build/url1.framework.js",
+        codeUrl:            "/unity/Build/url1.wasm",
         streamingAssetsUrl: "/unity/StreamingAssets",
         companyName:    "DefaultCompany",
         productName:    "IReallyWantGoHome",
@@ -241,7 +201,7 @@
 
       function loadUnity() {
         const script = document.createElement("script");
-        script.src = "/unity/Build/26052910.loader.js";
+        script.src = "/unity/Build/url1.loader.js";
         script.onerror = () => console.error("❌ loader.js 실패");
         script.onload = () => {
           createUnityInstance(unityCanvas, config, (progress) => {
@@ -269,85 +229,3 @@
     </script>
   </body>
 </html>
-=======
-      var buildUrl = "Build";
-      var loaderUrl = buildUrl + "/2605141.loader.js";
-      var config = {
-        arguments: [],
-        dataUrl: buildUrl + "/2605141.data",
-        frameworkUrl: buildUrl + "/2605141.framework.js",
-        codeUrl: buildUrl + "/2605141.wasm",
-        streamingAssetsUrl: "StreamingAssets",
-        companyName: "DefaultCompany",
-        productName: "IWantGoHome",
-        productVersion: "1.0.0",
-        showBanner: unityShowBanner,
-        // errorHandler: function(err, url, line) {
-        //    alert("error " + err + " occurred at line " + line);
-        //    // Return 'true' if you handled this error and don't want Unity
-        //    // to process it further, 'false' otherwise.
-        //    return true;
-        // },
-      };
-
-      // By default, Unity keeps WebGL canvas render target size matched with
-      // the DOM size of the canvas element (scaled by window.devicePixelRatio)
-      // Set this to false if you want to decouple this synchronization from
-      // happening inside the engine, and you would instead like to size up
-      // the canvas DOM size and WebGL render target sizes yourself.
-      // config.matchWebGLToCanvasSize = false;
-
-      // If you would like all file writes inside Unity Application.persistentDataPath
-      // directory to automatically persist so that the contents are remembered when
-      // the user revisits the site the next time, uncomment the following line:
-      // config.autoSyncPersistentDataPath = true;
-      // This autosyncing is currently not the default behavior to avoid regressing
-      // existing user projects that might rely on the earlier manual
-      // JS_FileSystem_Sync() behavior, but in future Unity version, this will be
-      // expected to change.
-
-      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        // Mobile device style: fill the whole browser client area with the game canvas:
-
-        var meta = document.createElement('meta');
-        meta.name = 'viewport';
-        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
-        document.getElementsByTagName('head')[0].appendChild(meta);
-        document.querySelector("#unity-container").className = "unity-mobile";
-        canvas.className = "unity-mobile";
-
-        // To lower canvas resolution on mobile devices to gain some
-        // performance, uncomment the following line:
-        // config.devicePixelRatio = 1;
-
-
-      } else {
-        // Desktop style: Render the game canvas in a window that can be maximized to fullscreen:
-        canvas.style.width = "960px";
-        canvas.style.height = "600px";
-      }
-
-      document.querySelector("#unity-loading-bar").style.display = "block";
-
-      var script = document.createElement("script");
-      script.src = loaderUrl;
-      script.onload = () => {
-        createUnityInstance(canvas, config, (progress) => {
-          document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
-              }).then((unityInstance) => {
-                document.querySelector("#unity-loading-bar").style.display = "none";
-                document.querySelector("#unity-fullscreen-button").onclick = () => {
-                  unityInstance.SetFullscreen(1);
-                };
-
-              }).catch((message) => {
-                alert(message);
-              });
-            };
-
-      document.body.appendChild(script);
-
-    </script>
-  </body>
-</html>
->>>>>>> 0072a9e (임시 커밋)
