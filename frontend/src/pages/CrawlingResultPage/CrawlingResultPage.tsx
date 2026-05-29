@@ -261,6 +261,8 @@ export default function CrawlingResultPage() {
             <img
               src={image_urls[selectedIndex]}
               alt="선택된 이미지"
+              crossOrigin="anonymous"
+              referrerPolicy="no-referrer"
               className="w-full object-contain"
               style={{ aspectRatio: '4/3', background: '#F0EBE3' }}
             />
@@ -310,6 +312,8 @@ export default function CrawlingResultPage() {
                 <img
                   src={url}
                   alt={`후보 ${i + 1}`}
+                  crossOrigin="anonymous"
+                  referrerPolicy="no-referrer"
                   className="w-full object-cover"
                   style={{ aspectRatio: '1/1', background: '#F0EBE3' }}
                 />
