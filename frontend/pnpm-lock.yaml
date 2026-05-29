@@ -34,6 +34,7 @@ importers:
         specifier: ^4.3.4
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
         version: 4.7.0(vite@6.4.2(jiti@2.7.0)(lightningcss@1.32.0))
       autoprefixer:
         specifier: ^10.5.0
@@ -44,12 +45,17 @@ importers:
 =======
         version: 4.7.0(vite@6.4.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0))
 =======
+=======
+>>>>>>> 6029bbf (Feat: unity build file upload)
         version: 4.7.0(vite@6.4.2(jiti@2.7.0)(lightningcss@1.32.0))
       autoprefixer:
         specifier: ^10.5.0
         version: 10.5.0(postcss@8.5.14)
+<<<<<<< HEAD
 >>>>>>> 40b3006 (임시 커밋)
 >>>>>>> 0072a9e (임시 커밋)
+=======
+>>>>>>> 6029bbf (Feat: unity build file upload)
       eslint:
         specifier: ^9.15.0
         version: 9.39.4(jiti@2.7.0)
