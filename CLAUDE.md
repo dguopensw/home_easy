@@ -552,3 +552,16 @@ The Operations stage will eventually include:
 | 2026-05-22 | 초기 구성 | 전체 | OSSP 최종보고서 작성 자동화 |
 | 2026-05-22 | 에이전트 고도화 (품질 기준·금지사항 강화) | repo-analyst.md, report-writer.md, report-reviewer.md | 보고서 밀도 강화 요청 |
 | 2026-05-22 | SKILL.md 9단계 워크플로우로 확장 | skills/ossp-report/SKILL.md | 단계별 품질 기준 명시 |
+
+---
+
+## 하네스: WebXR AR 배치
+
+**목표:** Unity iframe → Three.js + WebXR 기반 WebAR 전환. 바닥 감지(reticle), GLB 배치, 치수 스케일, 터치/버튼 인터랙션 구현 자동화
+
+**트리거:** "WebAR 만들어줘", "Unity 대신 WebXR", "AR 페이지 구현", "GLB AR 배치", "AR 빌드 시작", "이전 AR 작업 이어서", "AR 업데이트" 등의 요청 시 `webxr-ar-orchestrator` 스킬을 사용하라. 단순 질문은 직접 응답 가능.
+
+**변경 이력:**
+| 날짜 | 변경 내용 | 대상 | 사유 |
+|------|----------|------|------|
+| 2026-05-29 | 초기 구성 | 전체 | Unity 의존성 제거, WebXR 기반 AR 구현 자동화 |
