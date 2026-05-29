@@ -210,7 +210,7 @@ export default function ModelPreviewPage() {
       {/* CTA */}
       <div className="px-[20px] pb-[36px] pt-[16px] flex-shrink-0">
         <button
-          onClick={() => navigate('/ar', { state: { glbUrl, sourceUrl } })}
+          onClick={() => navigate('/ar', { state: { glbUrl, dimensions, sourceUrl } })}
           data-testid="preview-ar-button"
           className="w-full py-[17px] rounded-[18px] text-white text-[16px] font-bold flex items-center justify-center gap-[10px]"
           style={{

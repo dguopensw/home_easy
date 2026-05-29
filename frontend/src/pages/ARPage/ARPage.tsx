@@ -6,7 +6,7 @@
 
 
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import NavBar from '@/components/NavBar'
 import Toast from '@/components/Toast'
@@ -26,6 +26,12 @@ declare global {
   }
 }
 
+interface Dimensions {
+  width: number
+  height: number
+  depth: number
+}
+
 const HINT_TIMEOUT_MS = 10_000
 
 export default function ARPage() {
@@ -33,6 +39,11 @@ export default function ARPage() {
   const { state } = useLocation()
   const glbUrl: string = state?.glbUrl ?? ''
   const sourceUrl: string = state?.sourceUrl ?? ''
+  // AI가 측정한 가구 치수 (PreviewPage에서 state로 전달받음)
+  const dimensions: Dimensions = useMemo(
+    () => state?.dimensions ?? { width: 0, height: 0, depth: 0 },
+    [state],
+  )
 
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [unityReady, setUnityReady] = useState(false)
@@ -43,6 +54,7 @@ export default function ARPage() {
     const handleUnityReady = () => {
       setUnityReady(true)
       window.unityInstance?.SendMessage('ARController', 'LoadModel', glbUrl)
+      // dimensions(AI 측정 치수)는 state로 전달받아 둠 — Unity 스케일 적용 연동은 이후 단계
     }
     const handlePlaneFound = () => setShowHint(false)
 
@@ -56,7 +68,7 @@ export default function ARPage() {
       window.removeEventListener('unity:planeFound', handlePlaneFound)
       clearTimeout(hintTimer)
     }
-  }, [glbUrl, unityReady])
+  }, [glbUrl, dimensions, unityReady])
 
   const handleDuplicate = () => {
     window.unityInstance?.SendMessage('PlacementManager', 'DuplicateSelected')
