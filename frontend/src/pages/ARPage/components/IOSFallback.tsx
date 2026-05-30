@@ -1,20 +1,6 @@
 import { useEffect } from 'react'
 import NavBar from '@/components/NavBar'
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      'model-viewer': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
-        src?: string
-        ar?: boolean | string
-        'ar-modes'?: string
-        'camera-controls'?: boolean | string
-        alt?: string
-      }
-    }
-  }
-}
-
 interface IOSFallbackProps {
   glbUrl: string
   onBack: () => void

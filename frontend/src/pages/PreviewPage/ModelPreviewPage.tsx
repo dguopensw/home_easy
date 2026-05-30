@@ -1,24 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      'model-viewer': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
-        src?: string
-        alt?: string
-        'auto-rotate'?: string | boolean
-        'auto-rotate-delay'?: string
-        'rotation-per-second'?: string
-        'camera-controls'?: string | boolean
-        'shadow-intensity'?: string
-        exposure?: string
-        'environment-image'?: string
-      }
-    }
-  }
-}
-
 interface Dimensions {
   width: number
   height: number
