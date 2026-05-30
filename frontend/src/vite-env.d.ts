@@ -1,3 +1,4 @@
+/// <reference types="webxr" />
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
