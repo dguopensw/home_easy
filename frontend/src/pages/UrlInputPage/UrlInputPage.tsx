@@ -25,6 +25,7 @@ export default function UrlInputPage() {
       inputRef.current?.focus()
       return
     }
+    localStorage.setItem('sourceUrl', trimmedUrl)
     navigate('/crawling-result', { state: { sourceUrl: trimmedUrl } })
   }
 
