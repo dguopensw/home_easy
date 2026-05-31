@@ -48,10 +48,18 @@ class InpaintingService:
         obstacle_mask_path: Path,
         output_path: Path,
         furniture_type: str = "",
+        composite_blur_radius: float = 1.5,
     ) -> dict:
-        """Nano Banana (Gemini) + BrushNet 스타일 합성으로 마스크 영역을 인페인팅합니다."""
+        """Nano Banana (Gemini) + BrushNet 스타일 합성으로 마스크 영역을 인페인팅합니다.
+
+        composite_blur_radius=0 이면 합성 경계 블러 없이 하드 페이스트(테스트용).
+        """
         from inpainting.inpainting_banan import inpaint_with_banana
-        return inpaint_with_banana(image_path, obstacle_mask_path, output_path, furniture_type=furniture_type)
+        return inpaint_with_banana(
+            image_path, obstacle_mask_path, output_path,
+            furniture_type=furniture_type,
+            composite_blur_radius=composite_blur_radius,
+        )
 
     # ── Nano Banana end-to-end (시도 2 재현) ──────────────────────────────
 

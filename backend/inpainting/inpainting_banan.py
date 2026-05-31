@@ -87,8 +87,12 @@ def inpaint_with_banana(
     output_path: Path,
     furniture_type: str = "",
     mask_dilation_px: int = 15,
+    composite_blur_radius: float = 1.5,
 ) -> dict:
     """Nano Banana 인페인팅 후 BrushNet 스타일로 원본에 합성합니다.
+
+    composite_blur_radius: 합성 마스크 경계 GaussianBlur 반경(px). 0 이하이면
+        블러 없이 하드 페이스트(경계 1px step). 운영 기본값은 1.5.
 
     1. Mask preprocessing: 이진화 + dilation으로 객체 그림자/경계까지 포함
     2. 힌트 이미지 생성: 마스크 영역을 흰색으로 칠해 편집 영역 표시
@@ -174,7 +178,10 @@ def inpaint_with_banana(
         # BrushNet 합성: dilation 안 된 원본 마스크 사용 (가구 본체 영역 100% 보존)
         hard_mask_arr = (np.array(original_mask) > 127).astype(np.uint8) * 255
         hard_mask = Image.fromarray(hard_mask_arr, mode="L")
-        composite_mask = hard_mask.filter(ImageFilter.GaussianBlur(radius=1.5))
+        if composite_blur_radius and composite_blur_radius > 0:
+            composite_mask = hard_mask.filter(ImageFilter.GaussianBlur(radius=composite_blur_radius))
+        else:
+            composite_mask = hard_mask  # 블러 없는 하드 페이스트
 
         composite = image.copy()
         composite.paste(result, mask=composite_mask)
@@ -193,6 +200,7 @@ def inpaint_with_banana(
                 "banana_aspect": round(banana_aspect, 3),
                 "stretch_x": round(stretch_x, 3),
                 "stretch_y": round(stretch_y, 3),
+                "composite_blur_radius": composite_blur_radius,
             },
         }
 

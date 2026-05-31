@@ -47,6 +47,7 @@ async def run_inpaint_test(
     image: UploadFile = File(...),
     mask: UploadFile | None = File(None),
     furniture_type: str = Form(""),
+    composite_blur: float = Form(1.5),
 ):
     """선택한 방식으로 인페인팅을 실행하고 결과 이미지 URL과 진단값을 반환한다."""
     method = method.strip().lower()
@@ -84,7 +85,8 @@ async def run_inpaint_test(
             )
         elif method == "banana_brushnet":
             result = _service.inpaint_with_banana(
-                image_path, mask_path, output_path, furniture_type=furniture_type
+                image_path, mask_path, output_path, furniture_type=furniture_type,
+                composite_blur_radius=composite_blur,
             )
         elif method == "flux":
             result = _service.inpaint_with_flux(
