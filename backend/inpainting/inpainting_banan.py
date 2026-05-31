@@ -89,7 +89,7 @@ def inpaint_with_banana(
     mask_dilation_px: int = 15,
     composite_blur_radius: float = 1.5,
     composite_mode: str = "blur",
-    composite_dilate_px: int = 0,
+    composite_dilate_px: int = 10,
 ) -> dict:
     """Nano Banana 인페인팅 후 BrushNet 스타일로 원본에 합성합니다.
 
@@ -99,8 +99,9 @@ def inpaint_with_banana(
         - "seamless_mixed": Poisson seamless clone(MIXED) — 강한 원본 그라데이션 보존
     composite_blur_radius: blur 모드의 경계 GaussianBlur 반경(px). 0 이하이면
         블러 없이 하드 페이스트. 운영 기본값은 1.5.
-    composite_dilate_px: 합성 영역을 원본 마스크 대비 N px 확장(0=현행). 장애물
-        그림자/잔흔까지 banana 결과로 덮어 자국을 줄인다. mask_dilation_px 로 상한.
+    composite_dilate_px: 합성 영역을 원본 마스크 대비 N px 확장(운영 기본 10).
+        장애물 그림자/잔흔까지 banana 결과로 덮어 자국·SAM3 구멍을 줄인다.
+        mask_dilation_px 로 상한. 가구 마스크/치수에는 영향 없음(생성용 이미지 픽셀만 변경).
 
     1. Mask preprocessing: 이진화 + dilation으로 객체 그림자/경계까지 포함
     2. 힌트 이미지 생성: 마스크 영역을 흰색으로 칠해 편집 영역 표시

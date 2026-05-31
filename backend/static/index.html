@@ -378,9 +378,9 @@
       <div id="itDilateRow">
         <label class="it-label">합성 영역 확장 (장애물 그림자/잔흔까지 덮기)</label>
         <select id="itDilate" class="it-input">
-          <option value="0">0px — 마스크에 딱 맞게 (운영 현행)</option>
+          <option value="10" selected>10px 확장 (운영 기본)</option>
+          <option value="0">0px — 마스크에 딱 맞게</option>
           <option value="5">5px 확장</option>
-          <option value="10">10px 확장</option>
           <option value="15">15px 확장 (banana 그린 최대치)</option>
         </select>
         <div class="it-hint">banana가 +15px까지 그려놓은 그림자 정리분을 합성에 반영합니다. 가구 본체 N px 링이 banana 픽셀로 대체됨.</div>
@@ -392,6 +392,11 @@
           처리 후 SAM3 재마스킹 검사 (인페인팅 영역이 다시 '가구'로 인식되는지)
         </label>
         <div class="it-hint">RunPod(SAM3 런타임)에서만 동작. 결과로 SAM3 마스크·컷아웃·커버리지·구멍비율을 보여줍니다.</div>
+        <div id="itSam3PromptRow" style="margin-top:10px">
+          <label class="it-label">SAM3 텍스트 프롬프트 (쉼표로 여러 개, 예: sofa, sofa bed, couch)</label>
+          <input type="text" id="itSam3Prompts" placeholder="sofa, sofa bed" class="it-input" />
+          <div class="it-hint">비워두면 위 '가구 종류' 한 단어로 폴백합니다.</div>
+        </div>
       </div>
 
       <div>
@@ -1409,6 +1414,7 @@
       }
       fd.append('composite_dilate', el('itDilate').value);
       fd.append('run_sam3', el('itRunSam3').checked ? 'true' : 'false');
+      fd.append('sam3_prompts', el('itSam3Prompts').value);
 
       el('itError').classList.add('hidden');
       el('itResult').classList.add('hidden');
@@ -1480,6 +1486,14 @@
         }
         span.textContent = txt;
         warnEl.appendChild(span);
+
+        const promptList = s.sam3_actual_prompts || s.prompts_used;
+        if (promptList && promptList.length) {
+          const ps = document.createElement('span');
+          ps.className = 'badge-status badge-na';
+          ps.textContent = `SAM3 입력 프롬프트: ${promptList.join(', ')}`;
+          warnEl.appendChild(ps);
+        }
       }
 
       el('itDiag').textContent = JSON.stringify(data.diagnostics || {}, null, 2);

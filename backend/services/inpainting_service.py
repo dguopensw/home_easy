@@ -50,13 +50,13 @@ class InpaintingService:
         furniture_type: str = "",
         composite_blur_radius: float = 1.5,
         composite_mode: str = "blur",
-        composite_dilate_px: int = 0,
+        composite_dilate_px: int = 10,
     ) -> dict:
         """Nano Banana (Gemini) + BrushNet 스타일 합성으로 마스크 영역을 인페인팅합니다.
 
+        운영 기본값: composite_blur_radius=1.5, composite_dilate_px=10
+        (장애물 그림자/잔흔까지 덮어 경계 자국·SAM3 재마스킹 구멍을 줄임).
         composite_mode="seamless"는 Poisson 합성으로 경계 톤 차이를 흡수(테스트용).
-        composite_blur_radius=0 이면 합성 경계 블러 없이 하드 페이스트(테스트용).
-        composite_dilate_px>0 이면 합성 영역을 N px 확장(장애물 그림자까지 덮음, 테스트용).
         """
         from inpainting.inpainting_banan import inpaint_with_banana
         return inpaint_with_banana(

@@ -49,21 +49,26 @@ def _run_sam3_check(
     inpainted_path: Path,
     furniture_type: str,
     inpaint_mask_path: Path | None,
+    sam3_prompts: list[str] | None = None,
 ) -> dict:
     """인페인팅 결과에 SAM3 가구 마스킹을 재실행해 인식 여부를 검사한다.
 
     인페인팅된 영역이 다시 '가구'로 인식되는지(=구멍이 안 생기는지)가 핵심 지표.
+    sam3_prompts: SAM3에 직접 넣을 텍스트 프롬프트 리스트(없으면 furniture_type 폴백).
     """
     sam3_mask = job_dir / "sam3_remask.png"
     info = _segmentation.generate_sam3_furniture_mask_natural(
         inpainted_path,
         furniture_type or "furniture",
         sam3_mask,
+        sam3_prompts=sam3_prompts or None,
     )
     out: dict = {
         "status": info.get("status"),
         "mask_coverage": info.get("mask_coverage"),
         "valid_part_count": info.get("valid_part_count"),
+        "prompts_used": info.get("prompts_used"),
+        "sam3_actual_prompts": info.get("sam3_actual_prompts"),
         "error": info.get("error"),
     }
     if info.get("status") == "done" and sam3_mask.exists():
@@ -111,6 +116,7 @@ async def run_inpaint_test(
     composite_mode: str = Form("blur"),
     composite_dilate: int = Form(0),
     run_sam3: bool = Form(False),
+    sam3_prompts: str = Form(""),
 ):
     """선택한 방식으로 인페인팅을 실행하고 결과 이미지 URL과 진단값을 반환한다."""
     method = method.strip().lower()
@@ -185,9 +191,11 @@ async def run_inpaint_test(
 
         # 인페인팅 결과에 SAM3 재마스킹 검사 (선택)
         if run_sam3:
+            prompts = [p.strip() for p in sam3_prompts.split(",") if p.strip()]
             try:
                 response["sam3"] = _run_sam3_check(
-                    job, job_dir, output_path, furniture_type, mask_path
+                    job, job_dir, output_path, furniture_type, mask_path,
+                    sam3_prompts=prompts,
                 )
             except Exception as e:
                 logger.exception("SAM3 re-mask check failed")
