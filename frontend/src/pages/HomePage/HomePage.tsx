@@ -138,46 +138,8 @@ export default function HomePage() {
           ))}
         </div>
       </div>
+      
 
-      {/* 최근 배치 기록 */}
-      <div className="px-[24px] pt-[28px] pb-[44px]">
-        <div className="flex justify-between items-center mb-[14px]">
-          <p className="text-[16px] font-bold text-text-primary">최근 배치 기록</p>
-          <button
-            onClick={() => navigate('/history')}
-            data-testid="home-history-more-button"
-            className="text-[13px] font-semibold text-accent bg-transparent border-none"
-          >
-            전체보기
-          </button>
-        </div>
-        <div className="flex gap-[12px]">
-          {RECENT_ITEMS.map((item, i) => (
-            <div key={i} className="flex-1 bg-surface-2 rounded-[16px] overflow-hidden">
-              {/* 썸네일 */}
-              <div
-                className="relative flex items-center justify-center"
-                style={{ aspectRatio: '1/1', background: item.color + '22' }}
-              >
-                <div style={{ width: 44, height: 44, background: item.color, borderRadius: 10, opacity: 0.75 }} />
-                {/* 체크 뱃지 */}
-                <div
-                  className="absolute bottom-[6px] right-[6px] w-[20px] h-[20px] rounded-full flex items-center justify-center"
-                  style={{ background: 'var(--color-accent)' }}
-                >
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </div>
-              </div>
-              <div className="px-[10px] py-[8px]">
-                <p className="text-[12px] font-semibold text-text-primary">{item.label}</p>
-                <p className="text-[11px] text-text-secondary">2일 전</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   )
 }
