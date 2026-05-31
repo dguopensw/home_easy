@@ -1,6 +1,7 @@
 # Web framework (backend)
 fastapi
 uvicorn[standard]
+python-multipart
 sqlalchemy[asyncio]
 asyncpg
 alembic

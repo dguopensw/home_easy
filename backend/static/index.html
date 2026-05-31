@@ -303,6 +303,17 @@
     }
 
     .hidden { display: none; }
+
+    /* 인페인팅 비교 테스트 카드 */
+    #inpaintTestCard { border: 1.5px dashed var(--brand); }
+    .it-label { display:block; font-size:13px; font-weight:600; color:var(--text); margin-bottom:6px; }
+    .it-input {
+      width:100%; border:1.5px solid var(--border); border-radius:8px;
+      padding:10px 12px; font-size:14px; outline:none; background:#fff;
+    }
+    .it-input:focus { border-color: var(--brand); }
+    select.it-input { cursor:pointer; }
+    .it-hint { font-size:12px; color:var(--text-muted); margin-top:6px; }
   </style>
 </head>
 <body>
@@ -315,6 +326,65 @@
 </header>
 
 <div class="container">
+
+  <!-- 인페인팅 트러블슈팅 비교 (발표자료용) -->
+  <div class="card" id="inpaintTestCard">
+    <div class="card-title">🔬 인페인팅 방식 비교 — 트러블슈팅 (발표자료용)</div>
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px;line-height:1.6">
+      원본 이미지(+마스크)를 업로드하고 방식을 선택해 <strong>부정확한 전처리 결과</strong>를 직접 생성합니다.
+      보고서 <strong>시도 1(SAM+LaMa, blur)</strong>·<strong>시도 2(Nano Banana 단독, 비율 변형)</strong> 그림 생성용입니다.
+    </div>
+
+    <div style="display:grid;gap:12px;">
+      <div>
+        <label class="it-label">방식</label>
+        <select id="itMethod" class="it-input">
+          <option value="lama">시도 1 — LaMa (raw, blur 시연) · 마스크 필요</option>
+          <option value="banana_e2e">시도 2 — Nano Banana 단독 (end-to-end, 비율 변형) · 마스크 불필요</option>
+          <option value="banana_brushnet">시도 4 — Nano Banana + BrushNet 합성(최종) · 마스크 필요</option>
+          <option value="lama_composite">참고 — LaMa + BrushNet 합성 · 마스크 필요</option>
+          <option value="flux">시도 3 — Flux.1-Fill (GPU 필요, 로컬 CPU 미지원) · 마스크 필요</option>
+        </select>
+        <div class="it-hint" id="itMethodHint"></div>
+      </div>
+
+      <div>
+        <label class="it-label">원본 이미지 <span style="color:#c62828">*</span></label>
+        <input type="file" id="itImage" accept="image/*" class="it-input" />
+      </div>
+
+      <div id="itMaskRow">
+        <label class="it-label">마스크 이미지 (흰색 = 채울/제거할 영역)</label>
+        <input type="file" id="itMask" accept="image/*" class="it-input" />
+      </div>
+
+      <div id="itFurnRow">
+        <label class="it-label">가구 종류 (선택 — banana 프롬프트용, 예: sofa, chair, desk)</label>
+        <input type="text" id="itFurniture" placeholder="sofa" class="it-input" />
+      </div>
+
+      <div>
+        <button class="btn btn-primary" id="itRunBtn">인페인팅 실행</button>
+        <span class="selected-label" id="itStatus" style="margin-left:12px"></span>
+      </div>
+    </div>
+
+    <div id="itLoading" class="loading-wrap hidden">
+      <div class="spinner"></div>
+      <div class="loading-label" id="itLoadingLabel">처리 중...</div>
+    </div>
+
+    <div id="itError" class="error-box hidden" style="margin-top:14px"></div>
+
+    <div id="itResult" class="hidden" style="margin-top:18px">
+      <div class="result-images" id="itCompare"></div>
+      <div class="badge-row" id="itWarnings"></div>
+      <details style="margin-top:10px">
+        <summary>진단 정보 (diagnostics)</summary>
+        <pre id="itDiag"></pre>
+      </details>
+    </div>
+  </div>
 
   <!-- URL Input -->
   <div class="card">
@@ -1258,6 +1328,99 @@
     renderModelGeneration(data);
     startModelGenerationPolling(data);
   }
+
+  // ── 인페인팅 트러블슈팅 비교 테스트 ───────────────────────────────────────
+  (function initInpaintTest() {
+    const el = id => document.getElementById(id);
+    const NEEDS_MASK = new Set(['lama', 'lama_composite', 'flux', 'banana_brushnet']);
+    const NEEDS_FURN = new Set(['banana_e2e', 'banana_brushnet', 'flux', 'lama_composite']);
+    const HINTS = {
+      lama: 'LaMa 원본 출력을 그대로 저장 — 가구 표면이 흐릿(blur)하게 채워지는 한계를 시연합니다. (CPU, 수 초 소요)',
+      banana_e2e: '마스크 없이 원본 전체를 Nano Banana에 위탁 → 가구 비율/구조가 재창작되어 변형됩니다. (API 호출 ~5-10초)',
+      banana_brushnet: '최종 채택 방식: 마스크 영역만 인페인팅 후 원본에 합성 — 가구 본체 픽셀 100% 보존.',
+      lama_composite: 'LaMa 결과를 마스크 영역에만 합성 — 본체는 보존하되 마스크 내부는 여전히 흐릿할 수 있습니다.',
+      flux: 'Flux.1-Fill-dev는 CUDA GPU가 필요합니다. 로컬(CPU) 환경에서는 실패하며, RunPod 등 GPU 환경에서만 동작합니다.',
+    };
+
+    function syncForm() {
+      const m = el('itMethod').value;
+      el('itMaskRow').style.display = NEEDS_MASK.has(m) ? '' : 'none';
+      el('itFurnRow').style.display = NEEDS_FURN.has(m) ? '' : 'none';
+      el('itMethodHint').textContent = HINTS[m] || '';
+    }
+
+    el('itMethod').addEventListener('change', syncForm);
+    syncForm();
+
+    el('itRunBtn').addEventListener('click', async () => {
+      const method = el('itMethod').value;
+      const imageFile = el('itImage').files[0];
+      const maskFile = el('itMask').files[0];
+      const furniture = el('itFurniture').value.trim();
+
+      if (!imageFile) { alert('원본 이미지를 선택해주세요.'); return; }
+      if (NEEDS_MASK.has(method) && !maskFile) { alert('이 방식은 마스크 이미지가 필요합니다.'); return; }
+
+      const fd = new FormData();
+      fd.append('method', method);
+      fd.append('image', imageFile);
+      if (maskFile) fd.append('mask', maskFile);
+      fd.append('furniture_type', furniture);
+
+      el('itError').classList.add('hidden');
+      el('itResult').classList.add('hidden');
+      el('itLoading').classList.remove('hidden');
+      el('itLoadingLabel').textContent = `${method} 실행 중...`;
+      el('itRunBtn').disabled = true;
+      el('itStatus').textContent = '';
+
+      try {
+        const resp = await fetch(`${API}/api/inpaint-test/run`, { method: 'POST', body: fd });
+        const data = await resp.json();
+        if (data.status !== 'done') {
+          throw new Error(data.error || data.detail || `처리 실패 (${data.status || 'unknown'})`);
+        }
+        renderInpaintTest(data);
+        el('itStatus').textContent = `완료 (${data.method})`;
+      } catch (err) {
+        el('itError').textContent = `오류: ${err.message}`;
+        el('itError').classList.remove('hidden');
+      } finally {
+        el('itLoading').classList.add('hidden');
+        el('itRunBtn').disabled = false;
+      }
+    });
+
+    function imgCard(url, label) {
+      if (!url) return '';
+      return `<div class="result-img-card">
+        <img src="${API}${url}" alt="${label}" />
+        <div class="result-img-label">${label}</div>
+        <div class="result-img-filename"><a href="${API}${url}" download>다운로드</a></div>
+      </div>`;
+    }
+
+    function renderInpaintTest(data) {
+      let html = '';
+      html += imgCard(data.input_url, '원본 이미지');
+      if (data.mask_url) html += imgCard(data.mask_url, '마스크');
+      html += imgCard(data.result_url, '인페인팅 결과');
+      if (data.native_result_url) html += imgCard(data.native_result_url, '결과 (native 해상도)');
+      el('itCompare').innerHTML = html;
+
+      const warnEl = el('itWarnings');
+      warnEl.innerHTML = '';
+      (data.warnings || []).forEach(w => {
+        const span = document.createElement('span');
+        span.className = 'badge-status badge-warn';
+        span.textContent = w;
+        warnEl.appendChild(span);
+      });
+
+      el('itDiag').textContent = JSON.stringify(data.diagnostics || {}, null, 2);
+      el('itResult').classList.remove('hidden');
+    }
+  })();
 </script>
 </body>
 </html>
