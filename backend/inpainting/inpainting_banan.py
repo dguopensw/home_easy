@@ -89,6 +89,7 @@ def inpaint_with_banana(
     mask_dilation_px: int = 15,
     composite_blur_radius: float = 1.5,
     composite_mode: str = "blur",
+    composite_dilate_px: int = 0,
 ) -> dict:
     """Nano Banana 인페인팅 후 BrushNet 스타일로 원본에 합성합니다.
 
@@ -98,6 +99,8 @@ def inpaint_with_banana(
         - "seamless_mixed": Poisson seamless clone(MIXED) — 강한 원본 그라데이션 보존
     composite_blur_radius: blur 모드의 경계 GaussianBlur 반경(px). 0 이하이면
         블러 없이 하드 페이스트. 운영 기본값은 1.5.
+    composite_dilate_px: 합성 영역을 원본 마스크 대비 N px 확장(0=현행). 장애물
+        그림자/잔흔까지 banana 결과로 덮어 자국을 줄인다. mask_dilation_px 로 상한.
 
     1. Mask preprocessing: 이진화 + dilation으로 객체 그림자/경계까지 포함
     2. 힌트 이미지 생성: 마스크 영역을 흰색으로 칠해 편집 영역 표시
@@ -183,10 +186,20 @@ def inpaint_with_banana(
         # BrushNet 합성: dilation 안 된 원본 마스크 사용 (가구 본체 영역 100% 보존)
         hard_mask_arr = (np.array(original_mask) > 127).astype(np.uint8) * 255
 
+        # 합성 영역 확장 — 장애물 그림자/잔흔까지 banana 결과로 덮음.
+        # banana는 +mask_dilation_px 까지 이미 그렸으므로 그 범위 내에서만 확장.
+        eff_dilate = max(0, min(composite_dilate_px, mask_dilation_px))
+        if eff_dilate > 0:
+            fs = eff_dilate * 2 + 1
+            dilated = Image.fromarray(hard_mask_arr, mode="L").filter(ImageFilter.MaxFilter(size=fs))
+            paste_mask_arr = (np.array(dilated) > 127).astype(np.uint8) * 255
+        else:
+            paste_mask_arr = hard_mask_arr
+
         mode = (composite_mode or "blur").strip().lower()
 
         def _feather_paste() -> "Image.Image":
-            hard_mask = Image.fromarray(hard_mask_arr, mode="L")
+            hard_mask = Image.fromarray(paste_mask_arr, mode="L")
             if composite_blur_radius and composite_blur_radius > 0:
                 cmask = hard_mask.filter(ImageFilter.GaussianBlur(radius=composite_blur_radius))
             else:
@@ -198,16 +211,16 @@ def inpaint_with_banana(
         if mode in ("seamless", "seamless_mixed"):
             import cv2
 
-            ys, xs = np.where(hard_mask_arr > 0)
+            ys, xs = np.where(paste_mask_arr > 0)
             if len(xs) == 0:
                 composite = image.copy()
             else:
                 # seamlessClone은 마스크가 이미지 경계에 닿으면 실패 → 테두리 1px 제거
-                safe = hard_mask_arr.copy()
+                safe = paste_mask_arr.copy()
                 safe[0, :] = 0; safe[-1, :] = 0; safe[:, 0] = 0; safe[:, -1] = 0
                 sy, sx = np.where(safe > 0)
                 if len(sx) == 0:
-                    safe, sy, sx = hard_mask_arr, ys, xs
+                    safe, sy, sx = paste_mask_arr, ys, xs
                 center = (int((sx.min() + sx.max()) // 2), int((sy.min() + sy.max()) // 2))
                 src = cv2.cvtColor(np.array(result), cv2.COLOR_RGB2BGR)
                 dst = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
@@ -237,6 +250,7 @@ def inpaint_with_banana(
                 "stretch_y": round(stretch_y, 3),
                 "composite_blur_radius": composite_blur_radius,
                 "composite_mode": mode,
+                "composite_dilate_px": eff_dilate,
             },
         }
 

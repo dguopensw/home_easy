@@ -109,6 +109,7 @@ async def run_inpaint_test(
     furniture_type: str = Form(""),
     composite_blur: float = Form(1.5),
     composite_mode: str = Form("blur"),
+    composite_dilate: int = Form(0),
     run_sam3: bool = Form(False),
 ):
     """선택한 방식으로 인페인팅을 실행하고 결과 이미지 URL과 진단값을 반환한다."""
@@ -150,6 +151,7 @@ async def run_inpaint_test(
                 image_path, mask_path, output_path, furniture_type=furniture_type,
                 composite_blur_radius=composite_blur,
                 composite_mode=composite_mode,
+                composite_dilate_px=composite_dilate,
             )
         elif method == "flux":
             result = _service.inpaint_with_flux(

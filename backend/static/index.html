@@ -375,6 +375,17 @@
         <div class="it-hint">경계선 원인은 패치 톤 차이 — seamless가 톤을 주변에 맞춰 경계를 없앱니다.</div>
       </div>
 
+      <div id="itDilateRow">
+        <label class="it-label">합성 영역 확장 (장애물 그림자/잔흔까지 덮기)</label>
+        <select id="itDilate" class="it-input">
+          <option value="0">0px — 마스크에 딱 맞게 (운영 현행)</option>
+          <option value="5">5px 확장</option>
+          <option value="10">10px 확장</option>
+          <option value="15">15px 확장 (banana 그린 최대치)</option>
+        </select>
+        <div class="it-hint">banana가 +15px까지 그려놓은 그림자 정리분을 합성에 반영합니다. 가구 본체 N px 링이 banana 픽셀로 대체됨.</div>
+      </div>
+
       <div>
         <label class="it-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
           <input type="checkbox" id="itRunSam3" style="width:auto" />
@@ -1367,6 +1378,7 @@
       el('itMaskRow').style.display = NEEDS_MASK.has(m) ? '' : 'none';
       el('itFurnRow').style.display = NEEDS_FURN.has(m) ? '' : 'none';
       el('itBlurRow').style.display = (m === 'banana_brushnet') ? '' : 'none';
+      el('itDilateRow').style.display = (m === 'banana_brushnet') ? '' : 'none';
       el('itMethodHint').textContent = HINTS[m] || '';
     }
 
@@ -1395,6 +1407,7 @@
         fd.append('composite_mode', compSel);
         fd.append('composite_blur', '0');
       }
+      fd.append('composite_dilate', el('itDilate').value);
       fd.append('run_sam3', el('itRunSam3').checked ? 'true' : 'false');
 
       el('itError').classList.add('hidden');
