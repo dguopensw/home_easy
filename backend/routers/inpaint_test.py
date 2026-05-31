@@ -17,11 +17,13 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from core import OUTPUT_DIR
 from services.inpainting_service import InpaintingService
+from services.segmentation_service import SegmentationService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 _service = InpaintingService()
+_segmentation = SegmentationService()
 _TEST_ROOT = OUTPUT_DIR / "_inpaint_test"
 
 # 마스크가 필요한 방식
@@ -41,6 +43,64 @@ def _file_url(job: str, name: str) -> str:
     return f"/api/inpaint-test/file/{job}/{name}"
 
 
+def _run_sam3_check(
+    job: str,
+    job_dir: Path,
+    inpainted_path: Path,
+    furniture_type: str,
+    inpaint_mask_path: Path | None,
+) -> dict:
+    """인페인팅 결과에 SAM3 가구 마스킹을 재실행해 인식 여부를 검사한다.
+
+    인페인팅된 영역이 다시 '가구'로 인식되는지(=구멍이 안 생기는지)가 핵심 지표.
+    """
+    sam3_mask = job_dir / "sam3_remask.png"
+    info = _segmentation.generate_sam3_furniture_mask_natural(
+        inpainted_path,
+        furniture_type or "furniture",
+        sam3_mask,
+    )
+    out: dict = {
+        "status": info.get("status"),
+        "mask_coverage": info.get("mask_coverage"),
+        "valid_part_count": info.get("valid_part_count"),
+        "error": info.get("error"),
+    }
+    if info.get("status") == "done" and sam3_mask.exists():
+        out["mask_url"] = _file_url(job, sam3_mask.name)
+        # SAM3가 인식한 영역만 잘라낸 컷아웃 (시각 확인용)
+        cutout = job_dir / "sam3_cutout.png"
+        try:
+            _segmentation.apply_mask_to_image(inpainted_path, sam3_mask, cutout)
+            if cutout.exists():
+                out["cutout_url"] = _file_url(job, cutout.name)
+        except Exception as e:  # pragma: no cover
+            logger.warning("sam3 cutout failed: %s", e)
+
+        # 인페인팅 영역이 새 가구 마스크에서 빠졌는지(=구멍) 비율 측정
+        if inpaint_mask_path is not None and inpaint_mask_path.exists():
+            try:
+                import cv2
+
+                inp = cv2.imread(str(inpaint_mask_path), cv2.IMREAD_GRAYSCALE)
+                fur = cv2.imread(str(sam3_mask), cv2.IMREAD_GRAYSCALE)
+                if inp is not None and fur is not None:
+                    if fur.shape != inp.shape:
+                        fur = cv2.resize(fur, (inp.shape[1], inp.shape[0]))
+                    ip = inp > 127
+                    fr = fur > 127
+                    if ip.sum() > 0:
+                        hole = float((ip & ~fr).sum()) / float(ip.sum())
+                        out["hole_ratio_in_inpaint_region"] = round(hole, 3)
+                        out["hole_note"] = (
+                            "인페인팅 영역 중 SAM3가 가구로 인식 못한 비율 "
+                            "(높을수록 구멍 — 단, 가구 밖 오염물 포함 시 과대평가될 수 있음)"
+                        )
+            except Exception as e:  # pragma: no cover
+                logger.warning("hole ratio calc failed: %s", e)
+    return out
+
+
 @router.post("/run")
 async def run_inpaint_test(
     method: str = Form(...),
@@ -48,6 +108,8 @@ async def run_inpaint_test(
     mask: UploadFile | None = File(None),
     furniture_type: str = Form(""),
     composite_blur: float = Form(1.5),
+    composite_mode: str = Form("blur"),
+    run_sam3: bool = Form(False),
 ):
     """선택한 방식으로 인페인팅을 실행하고 결과 이미지 URL과 진단값을 반환한다."""
     method = method.strip().lower()
@@ -87,6 +149,7 @@ async def run_inpaint_test(
             result = _service.inpaint_with_banana(
                 image_path, mask_path, output_path, furniture_type=furniture_type,
                 composite_blur_radius=composite_blur,
+                composite_mode=composite_mode,
             )
         elif method == "flux":
             result = _service.inpaint_with_flux(
@@ -117,6 +180,16 @@ async def run_inpaint_test(
         native = result.get("diagnostics", {}).get("native_output_file")
         if native and (job_dir / native).exists():
             response["native_result_url"] = _file_url(job, native)
+
+        # 인페인팅 결과에 SAM3 재마스킹 검사 (선택)
+        if run_sam3:
+            try:
+                response["sam3"] = _run_sam3_check(
+                    job, job_dir, output_path, furniture_type, mask_path
+                )
+            except Exception as e:
+                logger.exception("SAM3 re-mask check failed")
+                response["sam3"] = {"status": "failed", "error": str(e)}
 
     status_code = 200 if result.get("status") == "done" else 500
     return JSONResponse(content=response, status_code=status_code)

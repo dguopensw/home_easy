@@ -88,11 +88,16 @@ def inpaint_with_banana(
     furniture_type: str = "",
     mask_dilation_px: int = 15,
     composite_blur_radius: float = 1.5,
+    composite_mode: str = "blur",
 ) -> dict:
     """Nano Banana 인페인팅 후 BrushNet 스타일로 원본에 합성합니다.
 
-    composite_blur_radius: 합성 마스크 경계 GaussianBlur 반경(px). 0 이하이면
-        블러 없이 하드 페이스트(경계 1px step). 운영 기본값은 1.5.
+    composite_mode: 합성 방식.
+        - "blur"(기본): hard mask + GaussianBlur(composite_blur_radius) 페더 페이스트
+        - "seamless": Poisson seamless clone(NORMAL) — 패치 톤을 주변에 맞춰 경계 흡수
+        - "seamless_mixed": Poisson seamless clone(MIXED) — 강한 원본 그라데이션 보존
+    composite_blur_radius: blur 모드의 경계 GaussianBlur 반경(px). 0 이하이면
+        블러 없이 하드 페이스트. 운영 기본값은 1.5.
 
     1. Mask preprocessing: 이진화 + dilation으로 객체 그림자/경계까지 포함
     2. 힌트 이미지 생성: 마스크 영역을 흰색으로 칠해 편집 영역 표시
@@ -177,14 +182,44 @@ def inpaint_with_banana(
 
         # BrushNet 합성: dilation 안 된 원본 마스크 사용 (가구 본체 영역 100% 보존)
         hard_mask_arr = (np.array(original_mask) > 127).astype(np.uint8) * 255
-        hard_mask = Image.fromarray(hard_mask_arr, mode="L")
-        if composite_blur_radius and composite_blur_radius > 0:
-            composite_mask = hard_mask.filter(ImageFilter.GaussianBlur(radius=composite_blur_radius))
-        else:
-            composite_mask = hard_mask  # 블러 없는 하드 페이스트
 
-        composite = image.copy()
-        composite.paste(result, mask=composite_mask)
+        mode = (composite_mode or "blur").strip().lower()
+
+        def _feather_paste() -> "Image.Image":
+            hard_mask = Image.fromarray(hard_mask_arr, mode="L")
+            if composite_blur_radius and composite_blur_radius > 0:
+                cmask = hard_mask.filter(ImageFilter.GaussianBlur(radius=composite_blur_radius))
+            else:
+                cmask = hard_mask  # 블러 없는 하드 페이스트
+            out = image.copy()
+            out.paste(result, mask=cmask)
+            return out
+
+        if mode in ("seamless", "seamless_mixed"):
+            import cv2
+
+            ys, xs = np.where(hard_mask_arr > 0)
+            if len(xs) == 0:
+                composite = image.copy()
+            else:
+                # seamlessClone은 마스크가 이미지 경계에 닿으면 실패 → 테두리 1px 제거
+                safe = hard_mask_arr.copy()
+                safe[0, :] = 0; safe[-1, :] = 0; safe[:, 0] = 0; safe[:, -1] = 0
+                sy, sx = np.where(safe > 0)
+                if len(sx) == 0:
+                    safe, sy, sx = hard_mask_arr, ys, xs
+                center = (int((sx.min() + sx.max()) // 2), int((sy.min() + sy.max()) // 2))
+                src = cv2.cvtColor(np.array(result), cv2.COLOR_RGB2BGR)
+                dst = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+                flag = cv2.NORMAL_CLONE if mode == "seamless" else cv2.MIXED_CLONE
+                try:
+                    blended = cv2.seamlessClone(src, dst, safe, center, flag)
+                    composite = Image.fromarray(cv2.cvtColor(blended, cv2.COLOR_BGR2RGB))
+                except Exception as ce:
+                    logger.warning("seamlessClone failed (%s) → feather fallback", ce)
+                    composite = _feather_paste()
+        else:
+            composite = _feather_paste()
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         composite.save(output_path)
@@ -201,6 +236,7 @@ def inpaint_with_banana(
                 "stretch_x": round(stretch_x, 3),
                 "stretch_y": round(stretch_y, 3),
                 "composite_blur_radius": composite_blur_radius,
+                "composite_mode": mode,
             },
         }
 
