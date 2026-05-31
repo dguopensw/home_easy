@@ -67,22 +67,22 @@ def generate_3d_model(job_id: str, image_url: str) -> dict:
         seed=42,
         # 전체적인 윤곽을 잡 단계
         sparse_structure_sampler_params={
-            "steps": 12,
+            "steps": 20,
             "guidance_strength": 7.5,
             "guidance_rescale": 0.7,
             "rescale_t": 5.0,
         },
         # 만들어진 뼈대 위에 살 붙이는 단계
         shape_slat_sampler_params={
-            "steps": 12,
+            "steps": 20,
             "guidance_strength": 7.5,
             "guidance_rescale": 0.5,
             "rescale_t": 3.0,
         },
         # 색칠하는 단계
         tex_slat_sampler_params={
-            "steps": 12,
-            "guidance_strength": 1.0,
+            "steps": 20,
+            "guidance_strength": 3.0,
             "guidance_rescale": 0.0,
             "rescale_t": 3.0,
         }
@@ -100,7 +100,7 @@ def generate_3d_model(job_id: str, image_url: str) -> dict:
         voxel_size        = mesh.voxel_size,
         aabb              = [[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
         decimation_target = 100000,
-        texture_size      = 1024,
+        texture_size      = 4096,
         remesh            = True,
         remesh_band       = 1,
         remesh_project    = 0,
