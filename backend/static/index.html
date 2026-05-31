@@ -363,6 +363,16 @@
         <input type="text" id="itFurniture" placeholder="sofa" class="it-input" />
       </div>
 
+      <div id="itBlurRow">
+        <label class="it-label">합성 경계 블러 (banana 부분 인페인팅 — 경계선 실험용)</label>
+        <select id="itBlur" class="it-input">
+          <option value="1.5">1.5px (운영 현행)</option>
+          <option value="0">0px — 블러 제거 (하드 페이스트)</option>
+          <option value="4">4px</option>
+          <option value="8">8px</option>
+        </select>
+      </div>
+
       <div>
         <button class="btn btn-primary" id="itRunBtn">인페인팅 실행</button>
         <span class="selected-label" id="itStatus" style="margin-left:12px"></span>
@@ -1346,6 +1356,7 @@
       const m = el('itMethod').value;
       el('itMaskRow').style.display = NEEDS_MASK.has(m) ? '' : 'none';
       el('itFurnRow').style.display = NEEDS_FURN.has(m) ? '' : 'none';
+      el('itBlurRow').style.display = (m === 'banana_brushnet') ? '' : 'none';
       el('itMethodHint').textContent = HINTS[m] || '';
     }
 
@@ -1366,6 +1377,7 @@
       fd.append('image', imageFile);
       if (maskFile) fd.append('mask', maskFile);
       fd.append('furniture_type', furniture);
+      fd.append('composite_blur', el('itBlur').value);
 
       el('itError').classList.add('hidden');
       el('itResult').classList.add('hidden');
