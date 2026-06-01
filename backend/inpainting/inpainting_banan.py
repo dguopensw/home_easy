@@ -238,6 +238,23 @@ def inpaint_with_banana(
         output_path.parent.mkdir(parents=True, exist_ok=True)
         composite.save(output_path)
 
+        # 합성에 실제로 들어가는 인페인팅 '조각'을 RGBA(마스크 밖 투명)로 저장 — UI 확인용.
+        # paste_mask 영역의 banana 결과 픽셀만 남기고 나머지는 투명 처리한다.
+        composite_piece_file = None
+        try:
+            piece_alpha = Image.fromarray(paste_mask_arr, mode="L")
+            if composite_blur_radius and composite_blur_radius > 0:
+                piece_alpha = piece_alpha.filter(
+                    ImageFilter.GaussianBlur(radius=composite_blur_radius)
+                )
+            piece = result.convert("RGBA")
+            piece.putalpha(piece_alpha)
+            piece_path = output_path.with_name(f"{output_path.stem}_piece.png")
+            piece.save(piece_path)
+            composite_piece_file = piece_path.name
+        except Exception as pe:  # pragma: no cover
+            logger.warning("composite piece save failed: %s", pe)
+
         return {
             "status": "done",
             "method": "nano_banana_brushnet_composite",
@@ -252,6 +269,7 @@ def inpaint_with_banana(
                 "composite_blur_radius": composite_blur_radius,
                 "composite_mode": mode,
                 "composite_dilate_px": eff_dilate,
+                "composite_piece_file": composite_piece_file,
             },
         }
 

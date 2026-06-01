@@ -189,6 +189,11 @@ async def run_inpaint_test(
         if native and (job_dir / native).exists():
             response["native_result_url"] = _file_url(job, native)
 
+        # banana_brushnet: 원본에 덮이는 인페인팅 '조각'(RGBA) 노출
+        piece = result.get("diagnostics", {}).get("composite_piece_file")
+        if piece and (job_dir / piece).exists():
+            response["composite_piece_url"] = _file_url(job, piece)
+
         # 인페인팅 결과에 SAM3 재마스킹 검사 (선택)
         if run_sam3:
             prompts = [p.strip() for p in sam3_prompts.split(",") if p.strip()]

@@ -82,15 +82,21 @@ figure{margin:16px 0 20px}
 .img-placeholder-desc{font-size:13px;line-height:1.5}
 figcaption{margin-top:10px;font-size:12.5px;color:var(--text-muted);text-align:center;font-style:italic}
 
-/* ===== Pipeline diagram ===== */
-.pipeline-diagram{background:#F8FAFC;border-radius:10px;padding:24px;margin:16px 0;display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:center;font-size:12.5px}
-.pipe-step{background:#fff;border:1.5px solid var(--primary);border-radius:8px;padding:8px 14px;font-weight:600;color:var(--primary-dark);text-align:center;min-width:120px}
-.pipe-step.input{border-color:var(--text-muted);color:var(--text-muted)}
-.pipe-step.gpt{border-color:#10B981;color:#047857}
-.pipe-step.sam{border-color:var(--primary);color:var(--primary-dark)}
-.pipe-step.banana{border-color:var(--salmon-dark);color:var(--salmon-dark)}
-.pipe-step.output{border-color:var(--success);color:var(--success);background:var(--success-bg)}
-.pipe-arrow{color:var(--text-muted);font-size:14px;font-weight:700}
+/* ===== Pipeline diagram (SVG 분기 흐름도) ===== */
+.pipeline-diagram{background:#F8FAFC;border-radius:10px;padding:24px 18px;margin:16px 0;display:flex;justify-content:center}
+.pipeline-svg{width:100%;max-width:560px;height:auto}
+.pipeline-svg .pl{fill:none;stroke:#94A3B8;stroke-width:1.8}
+.pipeline-svg .pl-tag{font-size:11px;font-weight:600;fill:var(--text-muted);text-anchor:start}
+.pipeline-svg .pl-tag.banana-tag{fill:var(--salmon-dark)}
+.pipeline-svg .b rect{fill:#fff;stroke-width:1.8}
+.pipeline-svg .b text{text-anchor:middle;font-size:13.5px;font-weight:700;dominant-baseline:middle}
+.pipeline-svg .b text.sub{font-size:12px;font-weight:600}
+.pipeline-svg .b.input rect{stroke:var(--text-muted)} .pipeline-svg .b.input text{fill:var(--text-muted)}
+.pipeline-svg .b.gpt   rect{stroke:#10B981}          .pipeline-svg .b.gpt text{fill:#047857}
+.pipeline-svg .b.sam   rect{stroke:var(--primary)}   .pipeline-svg .b.sam text{fill:var(--primary-dark)}
+.pipeline-svg .b.banana rect{stroke:var(--salmon-dark)} .pipeline-svg .b.banana text{fill:var(--salmon-dark)}
+.pipeline-svg .b.fuse  rect{stroke:var(--pending)}   .pipeline-svg .b.fuse text{fill:var(--pending)}
+.pipeline-svg .b.output rect{stroke:var(--success);fill:var(--success-bg)} .pipeline-svg .b.output text{fill:var(--success)}
 
 /* ===== Footer note ===== */
 .footnote{font-size:12px;color:var(--text-muted);margin-top:32px;padding:14px 0;border-top:1px solid var(--border)}
@@ -99,8 +105,7 @@ figcaption{margin-top:10px;font-size:12.5px;color:var(--text-muted);text-align:c
 
 @media (max-width:720px){
   .section-title{font-size:18px}
-  .pipe-step{min-width:auto;flex:1 1 100%}
-  .pipe-arrow{transform:rotate(90deg)}
+  .pipeline-diagram{padding:18px 10px}
 }
 
 /* ===== Print ===== */
@@ -326,25 +331,85 @@ figcaption{margin-top:10px;font-size:12.5px;color:var(--text-muted);text-align:c
     </p>
 
     <div class="pipeline-diagram">
-      <div class="pipe-step input">원본 이미지</div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-step gpt">GPT-4o<br>가구 분류</div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-step sam">SAM3<br>가구 마스크</div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-step gpt">GPT-4o<br>장애물 식별</div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-step sam">SAM3<br>장애물 마스크</div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-step banana">Nano Banana<br>인페인팅</div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-step">BrushNet 합성</div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-step sam">SAM3<br>재마스킹</div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-step output">최종 컷아웃</div>
+      <svg class="pipeline-svg" viewBox="0 0 760 762" role="img"
+           aria-label="원본 이미지를 GPT-4o가 가구 분류하고, 그 가구 종류로 장애물을 식별한다. GPT-4o는 두 SAM3 단계 모두에 텍스트 프롬프트(짧은 명사구)를 제공한다. 한쪽은 SAM3 가구 마스크로 이어지고, 다른 한쪽은 SAM3 장애물 마스크로 이어진다. 장애물 마스크가 검출되지 않으면 가구 마스크가 곧바로 최종 컷아웃이 된다. 장애물이 있으면 Nano Banana가 장애물 영역만 인페인팅하고, 이미지 합성 단계에서 원본 이미지를 베이스로 장애물 마스크 영역만 인페인팅 결과로 교체한 뒤, SAM3 재마스킹을 거쳐 최종 컷아웃을 만든다.">
+        <defs>
+          <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#94A3B8"/>
+          </marker>
+        </defs>
+
+        <!-- ===== 연결선 (박스보다 먼저 그려 박스가 위로 오게) ===== -->
+        <!-- 원본 → 가구 분류 -->
+        <path d="M380,70 L380,110" class="pl" marker-end="url(#ah)"/>
+        <!-- 가구 분류 → 2갈래 (가구 마스크 / 장애물 식별) -->
+        <path d="M380,160 L380,182" class="pl"/>
+        <path d="M380,182 L200,182 L200,202" class="pl" marker-end="url(#ah)"/>
+        <path d="M380,182 L560,182 L560,202" class="pl" marker-end="url(#ah)"/>
+        <!-- 가구 마스크 → 최종 컷아웃 (장애물 마스크 없을 때 바로 연결) -->
+        <path d="M200,252 L200,701 L295,701" class="pl" marker-end="url(#ah)"/>
+        <!-- 우: 장애물 식별 → 장애물 마스크 → Nano Banana -->
+        <path d="M560,252 L560,294" class="pl" marker-end="url(#ah)"/>
+        <path d="M560,344 L560,386" class="pl" marker-end="url(#ah)"/>
+        <!-- 원본 이미지 → 합성 (원본 픽셀 base, 우측 진입) -->
+        <path d="M465,45 L712,45 L712,528 L490,528" class="pl" marker-end="url(#ah)"/>
+        <!-- Nano Banana → 합성 (인페인팅 결과, 우측 진입) -->
+        <path d="M560,436 L560,505 L490,505" class="pl" marker-end="url(#ah)"/>
+        <!-- 합성 → 재마스킹 → 최종 -->
+        <path d="M380,542 L380,584" class="pl" marker-end="url(#ah)"/>
+        <path d="M380,634 L380,676" class="pl" marker-end="url(#ah)"/>
+
+        <!-- 흐름 라벨 -->
+        <text x="250" y="176" class="pl-tag" text-anchor="middle">텍스트 프롬프트</text>
+        <text x="470" y="176" class="pl-tag" text-anchor="middle">가구 종류 활용</text>
+        <text x="576" y="278" class="pl-tag">텍스트 프롬프트</text>
+        <text x="576" y="372" class="pl-tag banana-tag">장애물 영역만</text>
+        <text x="700" y="300" class="pl-tag" text-anchor="end">원본 픽셀</text>
+        <text x="552" y="478" class="pl-tag" text-anchor="end">인페인팅 결과</text>
+        <text x="192" y="476" class="pl-tag" text-anchor="end">장애물 없을 때</text>
+
+        <!-- ===== 박스 ===== -->
+        <!-- 원본 -->
+        <g class="b input"><rect x="295" y="20" width="170" height="50" rx="9"/>
+          <text x="380" y="50">원본 이미지</text></g>
+
+        <!-- GPT 가구 분류 (두 갈래의 공통 출발점) -->
+        <g class="b gpt"><rect x="295" y="110" width="170" height="50" rx="9"/>
+          <text x="380" y="130">GPT-4o</text><text x="380" y="148" class="sub">가구 분류</text></g>
+
+        <!-- 좌: SAM 가구 마스크 / 우: GPT 장애물 식별 -->
+        <g class="b sam"><rect x="115" y="202" width="170" height="50" rx="9"/>
+          <text x="200" y="222">SAM3</text><text x="200" y="240" class="sub">가구 마스크</text></g>
+        <g class="b gpt"><rect x="475" y="202" width="170" height="50" rx="9"/>
+          <text x="560" y="222">GPT-4o</text><text x="560" y="240" class="sub">장애물 식별</text></g>
+
+        <!-- SAM 장애물 마스크 -->
+        <g class="b sam"><rect x="475" y="294" width="170" height="50" rx="9"/>
+          <text x="560" y="314">SAM3</text><text x="560" y="332" class="sub">장애물 마스크</text></g>
+
+        <!-- Nano Banana 인페인팅 -->
+        <g class="b banana"><rect x="475" y="386" width="170" height="50" rx="9"/>
+          <text x="560" y="406">Nano Banana</text><text x="560" y="424" class="sub">인페인팅</text></g>
+
+        <!-- 이미지 합성 (원본 base + 인페인팅 결과 교체) -->
+        <g class="b fuse"><rect x="270" y="492" width="220" height="50" rx="9"/>
+          <text x="380" y="512">이미지 합성</text><text x="380" y="530" class="sub">장애물 영역만 원본에 교체</text></g>
+
+        <!-- SAM3 재마스킹 -->
+        <g class="b sam"><rect x="295" y="584" width="170" height="50" rx="9"/>
+          <text x="380" y="604">SAM3</text><text x="380" y="622" class="sub">재마스킹</text></g>
+
+        <!-- 최종 컷아웃 -->
+        <g class="b output"><rect x="295" y="676" width="170" height="50" rx="9"/>
+          <text x="380" y="706">최종 컷아웃</text></g>
+      </svg>
     </div>
-    <p class="code-caption">그림 5. 최종 채택 파이프라인의 9단계 처리 흐름</p>
+    <p class="code-caption">그림 5. 최종 채택 파이프라인의 처리 흐름 — GPT-4o가 먼저 가구를 분류하고, 그 가구 종류로
+      장애물을 식별한다. GPT-4o는 가구 마스킹·장애물 마스킹 두 SAM3 단계 모두에 텍스트 프롬프트(짧은 명사구)를
+      제공한다. <strong>장애물 마스크가 검출되지 않으면 가구 마스크가 곧바로 최종 컷아웃이 된다.</strong> 장애물이
+      있으면 Nano Banana가 장애물 영역만 인페인팅하고, <strong>이미지 합성 단계에서 원본 이미지를 베이스로 두고
+      장애물 마스크 영역만 인페인팅 결과로 교체</strong>(가구 본체 픽셀 100% 보존)한 뒤 SAM3 재마스킹으로 최종
+      컷아웃을 만든다.</p>
 
     <div class="subsection">
       <div class="subsection-title">3.1 SAM3 가구 마스킹</div>

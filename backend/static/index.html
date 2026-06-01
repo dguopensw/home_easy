@@ -212,6 +212,17 @@
       width: 100%; aspect-ratio: 1;
       object-fit: contain; display: block; background: #f8f8f8;
     }
+    /* 투명 PNG(합성 조각)용 체커보드 배경 */
+    .result-img-card.checker img {
+      background-color: #fff;
+      background-image:
+        linear-gradient(45deg, #ddd 25%, transparent 25%),
+        linear-gradient(-45deg, #ddd 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #ddd 75%),
+        linear-gradient(-45deg, transparent 75%, #ddd 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    }
     .result-img-label {
       font-size: 12px; color: var(--text-muted);
       padding: 6px 10px 2px;
@@ -1440,9 +1451,10 @@
       }
     });
 
-    function imgCard(url, label) {
+    function imgCard(url, label, transparent) {
       if (!url) return '';
-      return `<div class="result-img-card">
+      const cls = transparent ? 'result-img-card checker' : 'result-img-card';
+      return `<div class="${cls}">
         <img src="${API}${url}" alt="${label}" />
         <div class="result-img-label">${label}</div>
         <div class="result-img-filename"><a href="${API}${url}" download>다운로드</a></div>
@@ -1454,6 +1466,7 @@
       html += imgCard(data.input_url, '원본 이미지');
       if (data.mask_url) html += imgCard(data.mask_url, '마스크');
       html += imgCard(data.result_url, '인페인팅 결과');
+      if (data.composite_piece_url) html += imgCard(data.composite_piece_url, '합성 조각 (원본에 덮이는 banana 픽셀)', true);
       if (data.native_result_url) html += imgCard(data.native_result_url, '결과 (native 해상도)');
       if (data.sam3) {
         if (data.sam3.mask_url) html += imgCard(data.sam3.mask_url, 'SAM3 재마스크 (가구 인식)');
