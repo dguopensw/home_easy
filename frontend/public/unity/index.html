@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Unity Web Player | IWantGoHome</title>
+    <style>
+      html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+      #unity-container { position: relative; width: 100vw; height: 100vh; }
+      #webcam-video {
+        position: absolute; top: 0; left: 0;
+        width: 100%; height: 100%;
+        object-fit: cover; z-index: 1;
+        image-rendering: crisp-edges;
+      }
+      #unity-canvas {
+        position: absolute; top: 0; left: 0;
+        width: 100%; height: 100%;
+        z-index: 2; opacity: 0; pointer-events: none;
+      }
+      #composite-canvas {
+        position: absolute; top: 0; left: 0;
+        width: 100%; height: 100%;
+        z-index: 5;
+        /* ✅ 클릭/터치를 Unity canvas로 통과시킴 */
+        pointer-events: none;
+      }
+      /* ✅ Unity canvas가 실제 입력 받음 */
+      #unity-input-layer {
+        position: absolute; top: 0; left: 0;
+        width: 100%; height: 100%;
+        z-index: 6;
+        opacity: 0;
+      }
+      #unity-loading-bar { position: absolute; z-index: 100; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+      #unity-warning { position: absolute; z-index: 200; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; text-align: center; border-radius: 5px; }
+    </style>
+  </head>
+  <body>
+    <div id="unity-container">
+      <video id="webcam-video" autoplay playsinline muted></video>
+      <canvas id="unity-canvas"></canvas>
+      <canvas id="composite-canvas"></canvas>
+      <div id="unity-warning"></div>
+      <div id="unity-loading-bar">
+        <div id="unity-progress-bar-empty" style="width:200px;height:20px;background:rgba(255,255,255,0.2);">
+          <div id="unity-progress-bar-full" style="width:0%;height:100%;background:white;"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const unityCanvas = document.querySelector("#unity-canvas");
+      const compCanvas  = document.querySelector("#composite-canvas");
+      const webcamVideo = document.querySelector("#webcam-video");
+
+      function unityShowBanner(msg, type) {
+        var warningBanner = document.querySelector("#unity-warning");
+        function updateBannerVisibility() {
+          warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
+        }
+        var div = document.createElement('div');
+        div.innerHTML = msg;
+        warningBanner.appendChild(div);
+        if (type == 'error') div.style = 'background: red; padding: 10px;';
+        else {
+          if (type == 'warning') div.style = 'background: yellow; color: black; padding: 10px;';
+          setTimeout(function() { warningBanner.removeChild(div); updateBannerVisibility(); }, 5000);
+        }
+        updateBannerVisibility();
+      }
+
+      function startGPUCompositing() {
+        const gl = compCanvas.getContext('webgl2') || compCanvas.getContext('webgl');
+        if (!gl) return;
+
+        const vsSource = `
+          attribute vec2 a_pos;
+          varying vec2 v_uv;
+          void main() {
+            v_uv = vec2(a_pos.x * 0.5 + 0.5, 0.5 - a_pos.y * 0.5);
+            gl_Position = vec4(a_pos, 0.0, 1.0);
+          }
+        `;
+        const fsSource = `
+          precision mediump float;
+          uniform sampler2D u_unity;
+          varying vec2 v_uv;
+          void main() {
+            vec4 c = texture2D(u_unity, v_uv);
+            float brightness = max(max(c.r, c.g), c.b);
+            float alpha = step(0.02, brightness);
+            gl_FragColor = vec4(c.rgb, alpha);
+          }
+        `;
+
+        function compileShader(type, src) {
+          const s = gl.createShader(type);
+          gl.shaderSource(s, src);
+          gl.compileShader(s);
+          return s;
+        }
+
+        const prog = gl.createProgram();
+        gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, vsSource));
+        gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, fsSource));
+        gl.linkProgram(prog);
+        gl.useProgram(prog);
+
+        const buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER,
+          new Float32Array([-1,-1, 1,-1, -1,1, 1,1]),
+          gl.STATIC_DRAW
+        );
+        const posLoc = gl.getAttribLocation(prog, 'a_pos');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+        const tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.uniform1i(gl.getUniformLocation(prog, 'u_unity'), 0);
+
+        const dpr = window.devicePixelRatio || 1;
+
+        function render() {
+          const w = window.innerWidth;
+          const h = window.innerHeight;
+
+          // ✅ devicePixelRatio 적용으로 선명도 개선
+          const pw = Math.floor(w * dpr);
+          const ph = Math.floor(h * dpr);
+
+          if (compCanvas.width !== pw || compCanvas.height !== ph) {
+            compCanvas.width  = pw;
+            compCanvas.height = ph;
+            gl.viewport(0, 0, pw, ph);
+          }
+
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+
+          try {
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, unityCanvas);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+          } catch(_) {}
+
+          requestAnimationFrame(render);
+        }
+
+        render();
+        console.log('✅ GPU 컴포지터 시작, DPR:', dpr);
+      }
+
+      const config = {
+        dataUrl:            "/unity/Build/url1.data",
+        frameworkUrl:       "/unity/Build/url1.framework.js",
+        codeUrl:            "/unity/Build/url1.wasm",
+        streamingAssetsUrl: "/unity/StreamingAssets",
+        companyName:    "DefaultCompany",
+        productName:    "IReallyWantGoHome",
+        productVersion: "1.0.0",
+        showBanner: unityShowBanner,
+        webglContextAttributes: {
+          alpha:                true,
+          preserveDrawingBuffer: true,
+          antialias:            false,
+          stencil:              false,
+          depth:                true
+        },
+      };
+
+      function initWebcam() {
+        navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width:  { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30 }
+          }
+        })
+        .then((stream) => {
+          webcamVideo.srcObject = stream;
+          const settings = stream.getVideoTracks()[0].getSettings();
+          console.warn(`카메라: ${settings.width}x${settings.height}`);
+          webcamVideo.onloadedmetadata = () => loadUnity();
+        })
+        .catch((err) => {
+          console.warn("카메라 오류:", err);
+          loadUnity();
+        });
+      }
+
+      function loadUnity() {
+        const script = document.createElement("script");
+        script.src = "/unity/Build/url1.loader.js";
+        script.onerror = () => console.error("❌ loader.js 실패");
+        script.onload = () => {
+          createUnityInstance(unityCanvas, config, (progress) => {
+            document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
+          }).then((unityInstance) => {
+            window.unityInstance = unityInstance;
+            document.querySelector("#unity-loading-bar").style.display = "none";
+
+            // ✅ Unity canvas를 실제 화면 해상도로 설정
+            const dpr = window.devicePixelRatio || 1;
+            unityCanvas.style.width  = '100%';
+            unityCanvas.style.height = '100%';
+            unityCanvas.style.opacity = '0';
+            // ✅ 터치/클릭 직접 Unity canvas로
+            unityCanvas.style.pointerEvents = 'auto';
+
+            startGPUCompositing();
+            window.parent.postMessage('unity:ready', '*');
+          }).catch(err => { console.error("❌ Unity 실패:", err); });
+        };
+        document.body.appendChild(script);
+      }
+
+      initWebcam();
+    </script>
+  </body>
+</html>
