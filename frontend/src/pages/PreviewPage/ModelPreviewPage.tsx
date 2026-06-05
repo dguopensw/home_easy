@@ -53,7 +53,6 @@ export default function ModelPreviewPage() {
       const status = event.detail.status
       console.log('AR 상태 변경:', status)
       
-      // 💡 수정: 공식 카운터파트 상태인 'presenting' 일 때 비로소 진입 성공 판정을 내립니다.
       if (status === 'presenting') {
         setIsPreparingAR(false)
         wasInAr.current = true // 실제 카메라 화면이 안착했을 때만 true로 변경!
@@ -105,13 +104,36 @@ export default function ModelPreviewPage() {
     <div className="min-h-screen bg-bg flex flex-col relative">
       
       {/* AR 준비 중 전체화면 오버레이 */}
+      {/* AR 준비 중 전체화면 가이드 오버레이 */}
       {isPreparingAR && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-bg">
-          <div className="w-[48px] h-[48px] rounded-full border-[4px] border-t-accent mb-[20px]" 
-               style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)', borderTopColor: 'var(--color-accent)', animation: 'spin 0.9s linear infinite' }} />
-          <h2 className="text-[18px] font-bold text-text-primary mb-[8px]">AR 환경을 준비 중입니다...</h2>
-          <p className="text-[13px] text-text-secondary text-center leading-relaxed">
-            3D 파일 변환 및 카메라 구동에<br />최대 5~10초가 소요될 수 있습니다.
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-bg px-[28px]">
+          {/* 로딩 스피너 */}
+          <div className="w-[48px] h-[48px] rounded-full border-[4px] border-t-accent mb-[24px]" 
+              style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)', borderTopColor: 'var(--color-accent)', animation: 'spin 0.9s linear infinite' }} />
+          
+          <h2 className="text-[20px] font-bold text-text-primary mb-[12px]">AR 카메라를 켜고 있습니다</h2>
+          
+          {/* 💡 실용적인 AR 안내 가이드 박스 추가 */}
+          <div className="w-full bg-surface-2 rounded-[20px] p-[20px] mb-[24px] border border-border">
+            <p className="text-[14px] font-bold text-text-primary mb-[10px] text-center">💡 이렇게 사용해 보세요!</p>
+            <ul className="text-[13px] text-text-secondary space-y-[8px] break-keep">
+              <li className="flex items-start gap-[6px]">
+                <span className="text-accent">1.</span>
+                <span>카메라가 켜지면 **주변 바닥을 천천히 비추며** 스마트폰을 움직여 주세요.</span>
+              </li>
+              <li className="flex items-start gap-[6px]">
+                <span className="text-accent">2.</span>
+                <span>바닥이 인식되면 소파가 나타납니다. **한 손가락으로 드래그**하여 이동할 수 있습니다.</span>
+              </li>
+              <li className="flex items-start gap-[6px]">
+                <span className="text-accent">3.</span>
+                <span>**두 손가락을 돌리면** 가구의 방향을 회전할 수 있습니다.</span>
+              </li>
+            </ul>
+          </div>
+
+          <p className="text-[12px] text-text-thirdly text-center">
+            3D 파일 변환 및 카메라 구동에 최대 5~10초가 소요됩니다.
           </p>
         </div>
       )}
@@ -152,15 +174,19 @@ export default function ModelPreviewPage() {
             src={glbUrl}
             alt="3D 가구 모델"
             ar
-            // 💡 안드로이드 구형/신형 브라우저 파편화를 막기 위해 scene-viewer 모드를 안정적으로 결합했습니다.
             ar-modes="webxr scene-viewer quick-look"
+            ar-scale="fixed"
+            disable-zoom
             camera-controls=""
             auto-rotate=""
             auto-rotate-delay="500"
             rotation-per-second="20deg"
-            shadow-intensity="1"
-            exposure="1"
+            
+            /* 사용자가 조절할 필요 없도록, 호불호 없는 가장 깔끔한 그래픽 표준값으로 자동 고정 */
+            shadow-intensity="1.2"
+            exposure="1.0"
             environment-image="neutral"
+            
             style={{ width: '100%', height: '100%', background: 'transparent' } as React.CSSProperties}
           />
           {!loaded && (
@@ -228,8 +254,6 @@ export default function ModelPreviewPage() {
           onClick={() => {
             if (mvRef.current && typeof mvRef.current.activateAR === 'function') {
               setIsPreparingAR(true)
-              // 💡 [치료] 클릭하자마자 true로 강제 고정하던 버그 코드를 제거했습니다.
-              // 이제 진짜 카메라 화면에 안착했음이 감지되었을 때만 체킹 플래그가 가동됩니다.
               try {
                 mvRef.current.activateAR()
                 
