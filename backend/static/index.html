@@ -212,6 +212,17 @@
       width: 100%; aspect-ratio: 1;
       object-fit: contain; display: block; background: #f8f8f8;
     }
+    /* 투명 PNG(합성 조각)용 체커보드 배경 */
+    .result-img-card.checker img {
+      background-color: #fff;
+      background-image:
+        linear-gradient(45deg, #ddd 25%, transparent 25%),
+        linear-gradient(-45deg, #ddd 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #ddd 75%),
+        linear-gradient(-45deg, transparent 75%, #ddd 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    }
     .result-img-label {
       font-size: 12px; color: var(--text-muted);
       padding: 6px 10px 2px;
@@ -303,6 +314,17 @@
     }
 
     .hidden { display: none; }
+
+    /* 인페인팅 비교 테스트 카드 */
+    #inpaintTestCard { border: 1.5px dashed var(--brand); }
+    .it-label { display:block; font-size:13px; font-weight:600; color:var(--text); margin-bottom:6px; }
+    .it-input {
+      width:100%; border:1.5px solid var(--border); border-radius:8px;
+      padding:10px 12px; font-size:14px; outline:none; background:#fff;
+    }
+    .it-input:focus { border-color: var(--brand); }
+    select.it-input { cursor:pointer; }
+    .it-hint { font-size:12px; color:var(--text-muted); margin-top:6px; }
   </style>
 </head>
 <body>
@@ -315,6 +337,101 @@
 </header>
 
 <div class="container">
+
+  <!-- 인페인팅 트러블슈팅 비교 (발표자료용) -->
+  <div class="card" id="inpaintTestCard">
+    <div class="card-title">🔬 인페인팅 방식 비교 — 트러블슈팅 (발표자료용)</div>
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px;line-height:1.6">
+      원본 이미지(+마스크)를 업로드하고 방식을 선택해 <strong>부정확한 전처리 결과</strong>를 직접 생성합니다.
+      보고서 <strong>시도 1(SAM+LaMa, blur)</strong>·<strong>시도 2(Nano Banana 단독, 비율 변형)</strong> 그림 생성용입니다.
+    </div>
+
+    <div style="display:grid;gap:12px;">
+      <div>
+        <label class="it-label">방식</label>
+        <select id="itMethod" class="it-input">
+          <option value="lama">시도 1 — LaMa (raw, blur 시연) · 마스크 필요</option>
+          <option value="banana_e2e">시도 2 — Nano Banana 단독 (end-to-end, 비율 변형) · 마스크 불필요</option>
+          <option value="banana_brushnet">시도 4 — Nano Banana + BrushNet 합성(최종) · 마스크 필요</option>
+          <option value="lama_composite">참고 — LaMa + BrushNet 합성 · 마스크 필요</option>
+          <option value="flux">시도 3 — Flux.1-Fill (GPU 필요, 로컬 CPU 미지원) · 마스크 필요</option>
+        </select>
+        <div class="it-hint" id="itMethodHint"></div>
+      </div>
+
+      <div>
+        <label class="it-label">원본 이미지 <span style="color:#c62828">*</span></label>
+        <input type="file" id="itImage" accept="image/*" class="it-input" />
+      </div>
+
+      <div id="itMaskRow">
+        <label class="it-label">마스크 이미지 (흰색 = 채울/제거할 영역)</label>
+        <input type="file" id="itMask" accept="image/*" class="it-input" />
+      </div>
+
+      <div id="itFurnRow">
+        <label class="it-label">가구 종류 (선택 — banana 프롬프트용, 예: sofa, chair, desk)</label>
+        <input type="text" id="itFurniture" placeholder="sofa" class="it-input" />
+      </div>
+
+      <div id="itBlurRow">
+        <label class="it-label">합성 방식 (banana 부분 인페인팅 — 경계선 실험용)</label>
+        <select id="itBlur" class="it-input">
+          <option value="blur:1.5">블러 1.5px (운영 현행)</option>
+          <option value="blur:0">블러 0px — 하드 페이스트</option>
+          <option value="blur:8">블러 8px — 넓은 페더</option>
+          <option value="seamless">Poisson seamless (경계 톤 흡수) ★권장</option>
+          <option value="seamless_mixed">Poisson seamless MIXED</option>
+        </select>
+        <div class="it-hint">경계선 원인은 패치 톤 차이 — seamless가 톤을 주변에 맞춰 경계를 없앱니다.</div>
+      </div>
+
+      <div id="itDilateRow">
+        <label class="it-label">합성 영역 확장 (장애물 그림자/잔흔까지 덮기)</label>
+        <select id="itDilate" class="it-input">
+          <option value="10" selected>10px 확장 (운영 기본)</option>
+          <option value="0">0px — 마스크에 딱 맞게</option>
+          <option value="5">5px 확장</option>
+          <option value="15">15px 확장 (banana 그린 최대치)</option>
+        </select>
+        <div class="it-hint">banana가 +15px까지 그려놓은 그림자 정리분을 합성에 반영합니다. 가구 본체 N px 링이 banana 픽셀로 대체됨.</div>
+      </div>
+
+      <div>
+        <label class="it-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+          <input type="checkbox" id="itRunSam3" style="width:auto" />
+          처리 후 SAM3 재마스킹 검사 (인페인팅 영역이 다시 '가구'로 인식되는지)
+        </label>
+        <div class="it-hint">RunPod(SAM3 런타임)에서만 동작. 결과로 SAM3 마스크·컷아웃·커버리지·구멍비율을 보여줍니다.</div>
+        <div id="itSam3PromptRow" style="margin-top:10px">
+          <label class="it-label">SAM3 텍스트 프롬프트 (쉼표로 여러 개, 예: sofa, sofa bed, couch)</label>
+          <input type="text" id="itSam3Prompts" placeholder="sofa, sofa bed" class="it-input" />
+          <div class="it-hint">비워두면 위 '가구 종류' 한 단어로 폴백합니다.</div>
+        </div>
+      </div>
+
+      <div>
+        <button class="btn btn-primary" id="itRunBtn">인페인팅 실행</button>
+        <span class="selected-label" id="itStatus" style="margin-left:12px"></span>
+      </div>
+    </div>
+
+    <div id="itLoading" class="loading-wrap hidden">
+      <div class="spinner"></div>
+      <div class="loading-label" id="itLoadingLabel">처리 중...</div>
+    </div>
+
+    <div id="itError" class="error-box hidden" style="margin-top:14px"></div>
+
+    <div id="itResult" class="hidden" style="margin-top:18px">
+      <div class="result-images" id="itCompare"></div>
+      <div class="badge-row" id="itWarnings"></div>
+      <details style="margin-top:10px">
+        <summary>진단 정보 (diagnostics)</summary>
+        <pre id="itDiag"></pre>
+      </details>
+    </div>
+  </div>
 
   <!-- URL Input -->
   <div class="card">
@@ -1258,6 +1375,144 @@
     renderModelGeneration(data);
     startModelGenerationPolling(data);
   }
+
+  // ── 인페인팅 트러블슈팅 비교 테스트 ───────────────────────────────────────
+  (function initInpaintTest() {
+    const el = id => document.getElementById(id);
+    const NEEDS_MASK = new Set(['lama', 'lama_composite', 'flux', 'banana_brushnet']);
+    const NEEDS_FURN = new Set(['banana_e2e', 'banana_brushnet', 'flux', 'lama_composite']);
+    const HINTS = {
+      lama: 'LaMa 원본 출력을 그대로 저장 — 가구 표면이 흐릿(blur)하게 채워지는 한계를 시연합니다. (CPU, 수 초 소요)',
+      banana_e2e: '마스크 없이 원본 전체를 Nano Banana에 위탁 → 가구 비율/구조가 재창작되어 변형됩니다. (API 호출 ~5-10초)',
+      banana_brushnet: '최종 채택 방식: 마스크 영역만 인페인팅 후 원본에 합성 — 가구 본체 픽셀 100% 보존.',
+      lama_composite: 'LaMa 결과를 마스크 영역에만 합성 — 본체는 보존하되 마스크 내부는 여전히 흐릿할 수 있습니다.',
+      flux: 'Flux.1-Fill-dev는 CUDA GPU가 필요합니다. 로컬(CPU) 환경에서는 실패하며, RunPod 등 GPU 환경에서만 동작합니다.',
+    };
+
+    function syncForm() {
+      const m = el('itMethod').value;
+      el('itMaskRow').style.display = NEEDS_MASK.has(m) ? '' : 'none';
+      el('itFurnRow').style.display = NEEDS_FURN.has(m) ? '' : 'none';
+      el('itBlurRow').style.display = (m === 'banana_brushnet') ? '' : 'none';
+      el('itDilateRow').style.display = (m === 'banana_brushnet') ? '' : 'none';
+      el('itMethodHint').textContent = HINTS[m] || '';
+    }
+
+    el('itMethod').addEventListener('change', syncForm);
+    syncForm();
+
+    el('itRunBtn').addEventListener('click', async () => {
+      const method = el('itMethod').value;
+      const imageFile = el('itImage').files[0];
+      const maskFile = el('itMask').files[0];
+      const furniture = el('itFurniture').value.trim();
+
+      if (!imageFile) { alert('원본 이미지를 선택해주세요.'); return; }
+      if (NEEDS_MASK.has(method) && !maskFile) { alert('이 방식은 마스크 이미지가 필요합니다.'); return; }
+
+      const fd = new FormData();
+      fd.append('method', method);
+      fd.append('image', imageFile);
+      if (maskFile) fd.append('mask', maskFile);
+      fd.append('furniture_type', furniture);
+      const compSel = el('itBlur').value;
+      if (compSel.startsWith('blur:')) {
+        fd.append('composite_mode', 'blur');
+        fd.append('composite_blur', compSel.split(':')[1]);
+      } else {
+        fd.append('composite_mode', compSel);
+        fd.append('composite_blur', '0');
+      }
+      fd.append('composite_dilate', el('itDilate').value);
+      fd.append('run_sam3', el('itRunSam3').checked ? 'true' : 'false');
+      fd.append('sam3_prompts', el('itSam3Prompts').value);
+
+      el('itError').classList.add('hidden');
+      el('itResult').classList.add('hidden');
+      el('itLoading').classList.remove('hidden');
+      el('itLoadingLabel').textContent = `${method} 실행 중...`;
+      el('itRunBtn').disabled = true;
+      el('itStatus').textContent = '';
+
+      try {
+        const resp = await fetch(`${API}/api/inpaint-test/run`, { method: 'POST', body: fd });
+        const data = await resp.json();
+        if (data.status !== 'done') {
+          throw new Error(data.error || data.detail || `처리 실패 (${data.status || 'unknown'})`);
+        }
+        renderInpaintTest(data);
+        el('itStatus').textContent = `완료 (${data.method})`;
+      } catch (err) {
+        el('itError').textContent = `오류: ${err.message}`;
+        el('itError').classList.remove('hidden');
+      } finally {
+        el('itLoading').classList.add('hidden');
+        el('itRunBtn').disabled = false;
+      }
+    });
+
+    function imgCard(url, label, transparent) {
+      if (!url) return '';
+      const cls = transparent ? 'result-img-card checker' : 'result-img-card';
+      return `<div class="${cls}">
+        <img src="${API}${url}" alt="${label}" />
+        <div class="result-img-label">${label}</div>
+        <div class="result-img-filename"><a href="${API}${url}" download>다운로드</a></div>
+      </div>`;
+    }
+
+    function renderInpaintTest(data) {
+      let html = '';
+      html += imgCard(data.input_url, '원본 이미지');
+      if (data.mask_url) html += imgCard(data.mask_url, '마스크');
+      html += imgCard(data.result_url, '인페인팅 결과');
+      if (data.composite_piece_url) html += imgCard(data.composite_piece_url, '합성 조각 (원본에 덮이는 banana 픽셀)', true);
+      if (data.native_result_url) html += imgCard(data.native_result_url, '결과 (native 해상도)');
+      if (data.sam3) {
+        if (data.sam3.mask_url) html += imgCard(data.sam3.mask_url, 'SAM3 재마스크 (가구 인식)');
+        if (data.sam3.cutout_url) html += imgCard(data.sam3.cutout_url, 'SAM3 인식 컷아웃');
+      }
+      el('itCompare').innerHTML = html;
+
+      const warnEl = el('itWarnings');
+      warnEl.innerHTML = '';
+      (data.warnings || []).forEach(w => {
+        const span = document.createElement('span');
+        span.className = 'badge-status badge-warn';
+        span.textContent = w;
+        warnEl.appendChild(span);
+      });
+
+      if (data.sam3) {
+        const s = data.sam3;
+        const ok = s.status === 'done';
+        const span = document.createElement('span');
+        span.className = 'badge-status ' + (ok ? 'badge-info' : 'badge-warn');
+        let txt = `SAM3 재마스킹: ${s.status}`;
+        if (ok) {
+          txt += ` · 커버리지 ${s.mask_coverage != null ? (s.mask_coverage * 100).toFixed(1) + '%' : '-'}`;
+          txt += ` · part ${s.valid_part_count ?? '-'}`;
+          if (s.hole_ratio_in_inpaint_region != null)
+            txt += ` · 인페인팅영역 미인식(구멍) ${(s.hole_ratio_in_inpaint_region * 100).toFixed(1)}%`;
+        } else if (s.error) {
+          txt += ` (${s.error})`;
+        }
+        span.textContent = txt;
+        warnEl.appendChild(span);
+
+        const promptList = s.sam3_actual_prompts || s.prompts_used;
+        if (promptList && promptList.length) {
+          const ps = document.createElement('span');
+          ps.className = 'badge-status badge-na';
+          ps.textContent = `SAM3 입력 프롬프트: ${promptList.join(', ')}`;
+          warnEl.appendChild(ps);
+        }
+      }
+
+      el('itDiag').textContent = JSON.stringify(data.diagnostics || {}, null, 2);
+      el('itResult').classList.remove('hidden');
+    }
+  })();
 </script>
 </body>
 </html>

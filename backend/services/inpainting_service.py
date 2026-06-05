@@ -48,12 +48,66 @@ class InpaintingService:
         obstacle_mask_path: Path,
         output_path: Path,
         furniture_type: str = "",
+        composite_blur_radius: float = 1.5,
+        composite_mode: str = "blur",
+        composite_dilate_px: int = 10,
     ) -> dict:
-        """Nano Banana (Gemini) + BrushNet 스타일 합성으로 마스크 영역을 인페인팅합니다."""
-        from inpainting.inpainting_banan import inpaint_with_banana
-        return inpaint_with_banana(image_path, obstacle_mask_path, output_path, furniture_type=furniture_type)
+        """Nano Banana (Gemini) + BrushNet 스타일 합성으로 마스크 영역을 인페인팅합니다.
 
-    # ── LaMa 인페인팅 ─────────────────────────────────────────────────────
+        운영 기본값: composite_blur_radius=1.5, composite_dilate_px=10
+        (장애물 그림자/잔흔까지 덮어 경계 자국·SAM3 재마스킹 구멍을 줄임).
+        composite_mode="seamless"는 Poisson 합성으로 경계 톤 차이를 흡수(테스트용).
+        """
+        from inpainting.inpainting_banan import inpaint_with_banana
+        return inpaint_with_banana(
+            image_path, obstacle_mask_path, output_path,
+            furniture_type=furniture_type,
+            composite_blur_radius=composite_blur_radius,
+            composite_mode=composite_mode,
+            composite_dilate_px=composite_dilate_px,
+        )
+
+    # ── Nano Banana end-to-end (시도 2 재현) ──────────────────────────────
+
+    def inpaint_with_banana_e2e(
+        self,
+        image_path: Path,
+        output_path: Path,
+        furniture_type: str = "",
+    ) -> dict:
+        """마스크 없이 원본 전체를 Nano Banana에 위탁해 재생성합니다 (시도 2).
+
+        가구 본체 픽셀이 보존되지 않아 비율 변형이 발생하며, 이는 발표 자료의
+        '시도 2 — Nano Banana 단독' 한계 시연용입니다.
+        """
+        from inpainting.inpainting_banana_e2e import inpaint_with_banana_e2e
+        return inpaint_with_banana_e2e(image_path, output_path, furniture_type=furniture_type)
+
+    # ── LaMa (in-process, 시도 1 재현) ────────────────────────────────────
+
+    def inpaint_with_lama_local(
+        self,
+        image_path: Path,
+        obstacle_mask_path: Path,
+        output_path: Path,
+        composite: bool = False,
+        mask_dilation_px: int = 0,
+    ) -> dict:
+        """in-process SimpleLama로 마스크 영역을 인페인팅합니다 (시도 1).
+
+        composite=False(기본)면 LaMa 원본 출력을 그대로 저장하여, 가구 표면의
+        흐릿(blur)한 인페인팅 한계를 발표 자료용 이미지로 시연합니다.
+        """
+        from inpainting.inpainting_lama import inpaint_with_lama as _lama
+        return _lama(
+            image_path,
+            obstacle_mask_path,
+            output_path,
+            mask_dilation_px=mask_dilation_px,
+            composite=composite,
+        )
+
+    # ── LaMa 인페인팅 (subprocess, 운영 파이프라인용) ────────────────────
 
     def inpaint_with_lama(
         self,

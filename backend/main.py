@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from database import engine, Base
 from models import job  # noqa: F401 — Base.metadata에 테이블 등록
-from routers import generation, crawling, furniture
+from routers import generation, crawling, furniture, inpaint_test
 
 _BACKEND_DIR = Path(__file__).resolve().parent
 _STATIC_DIR = _BACKEND_DIR / "static"
@@ -39,6 +39,7 @@ if _STATIC_DIR.exists():
 app.include_router(crawling.router, prefix="/api", tags=["crawling"])
 app.include_router(generation.router, prefix="/api", tags=["generation"])
 app.include_router(furniture.router, prefix="/api/furniture", tags=["furniture"])
+app.include_router(inpaint_test.router, prefix="/api/inpaint-test", tags=["inpaint-test"])
 
 
 @app.get("/health")

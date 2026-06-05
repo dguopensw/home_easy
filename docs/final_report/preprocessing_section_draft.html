@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>이미지 전처리 파이프라인 — 시행착오와 최종 설계</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1E293B;background:#fff;line-height:1.8;font-size:15px}
+
+:root{
+  --primary:#2563EB;--primary-light:#EFF6FF;--primary-dark:#1D4ED8;
+  --text:#1E293B;--text-muted:#64748B;--border:#E2E8F0;
+  --success:#16A34A;--success-bg:#F0FDF4;
+  --warning:#D97706;--warning-bg:#FFFBEB;
+  --pending:#7C3AED;--pending-bg:#F5F3FF;
+  --danger:#DC2626;--danger-bg:#FEF2F2;
+  --bg-gray:#F8FAFC;--bg-section:#FAFBFD;
+  --salmon:#FCE4D6;--salmon-dark:#E07040;
+}
+
+.container{max-width:1100px;margin:0 auto;padding:0 28px}
+
+/* ===== Hero ===== */
+.hero{background:linear-gradient(135deg,#1E3A5F 0%,#2563EB 60%,#3B82F6 100%);color:#fff;padding:56px 0 44px}
+.hero h1{font-size:28px;font-weight:800;line-height:1.3;margin-bottom:10px}
+.hero .subtitle{font-size:15px;opacity:.88;max-width:720px;line-height:1.7}
+.hero-meta{margin-top:24px;display:flex;flex-wrap:wrap;gap:10px}
+.badge{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:5px 14px;font-size:12.5px;font-weight:500}
+
+/* ===== Sections ===== */
+section{padding:46px 0 32px}
+section+section{border-top:1px solid var(--border)}
+.section-num{display:inline-block;background:var(--primary);color:#fff;font-size:11px;font-weight:700;border-radius:5px;padding:2px 8px;margin-right:8px;vertical-align:middle}
+.section-title{font-size:21px;font-weight:700;margin-bottom:18px;color:var(--text);display:flex;align-items:center;gap:8px}
+.subsection{margin-top:26px}
+.subsection-title{font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px;padding-left:10px;border-left:3px solid var(--primary)}
+p{margin-bottom:11px}
+p:last-child{margin-bottom:0}
+
+/* ===== Tables ===== */
+.table-wrap{overflow-x:auto;margin:14px 0 18px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{background:var(--bg-gray);border:1px solid var(--border);padding:9px 12px;text-align:left;font-weight:600;color:var(--text);white-space:nowrap}
+td{border:1px solid var(--border);padding:8px 12px;vertical-align:top;color:var(--text)}
+tr:nth-child(even) td{background:#FAFBFD}
+
+/* ===== Trial cards ===== */
+.trial{border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin:14px 0;background:#fff}
+.trial-header{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
+.trial-tag{display:inline-block;font-size:11px;font-weight:700;color:#fff;padding:2px 8px;border-radius:4px}
+.trial-tag.reject{background:var(--danger)}
+.trial-tag.adopt{background:var(--success)}
+.trial-title{font-size:16px;font-weight:700}
+.trial-body{font-size:13.5px;line-height:1.75}
+.trial-body p{margin-bottom:8px}
+.trial-body strong{color:var(--primary-dark)}
+.trial-body ul{margin:6px 0 6px 22px}
+.trial-body li{margin-bottom:4px}
+
+/* ===== Boxes ===== */
+.info-box{background:var(--primary-light);border-left:4px solid var(--primary);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:13.5px}
+.warning-box{background:var(--warning-bg);border-left:4px solid var(--warning);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:13.5px}
+.warning-box strong{color:var(--warning)}
+.success-box{background:var(--success-bg);border-left:4px solid var(--success);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:13.5px}
+.success-box strong{color:var(--success)}
+.danger-box{background:var(--danger-bg);border-left:4px solid var(--danger);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:13.5px}
+.quote-box{background:#FAFBFD;border-left:4px solid #94A3B8;border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-style:italic;font-size:13.5px;color:#475569}
+.quote-box cite{display:block;margin-top:8px;font-style:normal;font-size:12px;color:var(--text-muted)}
+
+/* ===== Code ===== */
+pre{background:#0F172A;color:#E2E8F0;padding:14px 18px;border-radius:8px;overflow-x:auto;font-size:12.5px;line-height:1.6;margin:12px 0;font-family:'SF Mono','Menlo','Consolas',monospace}
+code{font-family:'SF Mono','Menlo','Consolas',monospace;background:#F1F5F9;color:#0F172A;padding:1px 6px;border-radius:4px;font-size:12.5px}
+pre code{background:transparent;color:inherit;padding:0}
+.code-caption{font-size:12px;color:var(--text-muted);margin-top:-4px;margin-bottom:14px}
+
+/* ===== Image placeholders ===== */
+figure{margin:16px 0 20px}
+.img-placeholder{border:2px dashed #CBD5E1;background:#F8FAFC;border-radius:8px;padding:32px 20px;text-align:center;color:var(--text-muted)}
+.img-placeholder-label{font-size:12px;font-weight:600;color:var(--primary);background:var(--primary-light);display:inline-block;padding:3px 10px;border-radius:12px;margin-bottom:8px}
+.img-placeholder-desc{font-size:13px;line-height:1.5}
+figcaption{margin-top:10px;font-size:12.5px;color:var(--text-muted);text-align:center;font-style:italic}
+
+/* ===== Pipeline diagram (SVG 분기 흐름도) ===== */
+.pipeline-diagram{background:#F8FAFC;border-radius:10px;padding:24px 18px;margin:16px 0;display:flex;justify-content:center}
+.pipeline-svg{width:100%;max-width:560px;height:auto}
+.pipeline-svg .pl{fill:none;stroke:#94A3B8;stroke-width:1.8}
+.pipeline-svg .pl-tag{font-size:11px;font-weight:600;fill:var(--text-muted);text-anchor:start}
+.pipeline-svg .pl-tag.banana-tag{fill:var(--salmon-dark)}
+.pipeline-svg .b rect{fill:#fff;stroke-width:1.8}
+.pipeline-svg .b text{text-anchor:middle;font-size:13.5px;font-weight:700;dominant-baseline:middle}
+.pipeline-svg .b text.sub{font-size:12px;font-weight:600}
+.pipeline-svg .b.input rect{stroke:var(--text-muted)} .pipeline-svg .b.input text{fill:var(--text-muted)}
+.pipeline-svg .b.gpt   rect{stroke:#10B981}          .pipeline-svg .b.gpt text{fill:#047857}
+.pipeline-svg .b.sam   rect{stroke:var(--primary)}   .pipeline-svg .b.sam text{fill:var(--primary-dark)}
+.pipeline-svg .b.banana rect{stroke:var(--salmon-dark)} .pipeline-svg .b.banana text{fill:var(--salmon-dark)}
+.pipeline-svg .b.fuse  rect{stroke:var(--pending)}   .pipeline-svg .b.fuse text{fill:var(--pending)}
+.pipeline-svg .b.output rect{stroke:var(--success);fill:var(--success-bg)} .pipeline-svg .b.output text{fill:var(--success)}
+
+/* ===== Footer note ===== */
+.footnote{font-size:12px;color:var(--text-muted);margin-top:32px;padding:14px 0;border-top:1px solid var(--border)}
+.footnote ol{margin-left:20px}
+.footnote li{margin-bottom:4px}
+
+@media (max-width:720px){
+  .section-title{font-size:18px}
+  .pipeline-diagram{padding:18px 10px}
+}
+
+/* ===== Print ===== */
+@media print{
+  .hero{background:#1E3A5F !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  pre,code{background:#F1F5F9 !important;color:#0F172A !important}
+  section{break-inside:avoid;page-break-inside:avoid}
+  .trial{break-inside:avoid;page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="container">
+    <div class="badge">제3장 핵심 구현</div>
+    <h1 style="margin-top:14px">이미지 전처리 파이프라인 — 시행착오와 최종 설계</h1>
+    <p class="subtitle">
+      가구의 가로:세로:높이 비율을 보존한 채 배경과 장애물을 제거해 3D 생성 모델의 깨끗한 입력을 만드는 것이
+      이 모듈의 목표이다. 본 장은 후보 기술 4가지의 비교와 시행착오, 최종 채택 파이프라인(SAM3 + Nano Banana Pro
+      API + BrushNet 합성)의 설계 근거, 그리고 GPT-4o가 파이프라인 전반에서 수행하는 역할을 정리한다.
+    </p>
+    <div class="hero-meta">
+      <span class="badge">🎯 비율 보존 우선</span>
+      <span class="badge">🧩 SAM3 + GPT-4o + Banana</span>
+      <span class="badge">📐 BrushNet 합성</span>
+      <span class="badge">📄 SAM3 논문 가이드 준수</span>
+    </div>
+  </div>
+</header>
+
+<!-- ============ 1. 제약 조건과 목표 ============ -->
+<section>
+  <div class="container">
+    <div class="section-title"><span class="section-num">1</span>제약 조건과 목표</div>
+
+    <div class="subsection">
+      <div class="subsection-title">1.1 본 모듈의 목표</div>
+      <p>
+        본 서비스는 사용자가 중고 가구 게시물의 URL을 입력하면 해당 가구의 3D 모델을 자동으로 생성하고,
+        Unity 기반 AR 환경에서 사용자의 실제 공간에 배치해 보는 기능을 제공한다. 이미지 전처리 모듈의 목표는
+        명확하다 — <strong>3D 생성 모델(TRELLIS)이 받아들이기에 적합한, 배경이 제거되고 장애물이 자연스럽게
+        복원된 가구 컷아웃을 생성하는 것이다.</strong>
+      </p>
+      <p>구체적으로는 다음 세 가지 변형을 동시에 수행해야 한다.</p>
+      <ul style="margin-left:22px">
+        <li><strong>배경 제거</strong>: 가구 외 영역(바닥, 벽, 창문, 주변 사물)을 투명 또는 중성 배경으로 치환</li>
+        <li><strong>장애물 제거</strong>: 가구 위에 놓인 임시 물체(리모콘, 컵, 베개, 모니터암, 케이블 등)를 제거</li>
+        <li><strong>자연스러운 복원</strong>: 장애물이 가리고 있던 가구 표면을 텍스처가 매끄럽게 이어지도록 인페인팅</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">1.2 절대 제약: 가구 비율 보존</div>
+      <p>
+        본 서비스의 핵심 가치는 사용자가 실제 가구를 구매하기 전 자신의 공간에 정확히 어울리는지를
+        가상으로 확인할 수 있게 해 주는 것에 있다. 따라서 전처리 단계에서 가구의 <strong>가로:세로:높이 비율</strong>이
+        조금이라도 변형되면 그 결과로 생성된 3D 모델이 실제 가구와 다른 비율을 가지게 되고, AR 배치 결과는
+        사용자에게 잘못된 정보를 제공하게 된다. 이는 서비스 가치의 근본을 훼손한다.
+      </p>
+      <div class="danger-box">
+        <strong>비율 보존 우선 원칙</strong> — 시각적 자연스러움과 가구 비율 보존이 충돌할 경우, 항상
+        후자를 우선한다. 인페인팅으로 가구 일부가 살짝 변형되어 보이더라도 본체의 픽셀 좌표/형태가
+        보존되어야 한다. 이 원칙이 본 장 전체 설계의 결정 기준이 되었다.
+      </div>
+      <p>
+        이 제약은 사실 단순해 보이지만 인페인팅 기술 선택에서 강력한 제약으로 작용한다. 다음 장에서 다룰
+        후보 기술들은 모두 이 제약을 통과하는 정도가 달랐고, 그 차이가 최종 채택의 기준이 되었다.
+      </p>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">1.3 부차적 제약</div>
+      <p>위의 절대 제약 외에도 다음과 같은 부차적 제약을 고려했다.</p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>제약 항목</th><th>내용</th><th>판정 기준</th></tr>
+          <tr><td>처리 속도</td><td>한 요청에 대해 전처리 단계가 가능한 짧게 끝나야 사용자 대기 시간 단축</td><td>30~50초 이내 (TRELLIS 제외)</td></tr>
+          <tr><td>운영 비용</td><td>로컬 GPU 비용 또는 외부 API 비용이 합리적이어야 함</td><td>요청당 비용 0.1 USD 이내 목표</td></tr>
+          <tr><td>결정성</td><td>동일 입력에 대해 동일 출력을 보장해야 디버깅과 회귀 테스트가 가능</td><td>같은 사진 2-3회 호출 시 픽셀 차이 최소</td></tr>
+          <tr><td>가구 종류 범용성</td><td>소파, 책상, 의자, 침대 등 일반 가구 카테고리 모두 처리 가능해야 함</td><td>9개 가구 type 분류 지원</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2. 시행착오 ============ -->
+<section>
+  <div class="container">
+    <div class="section-title"><span class="section-num">2</span>후보 기술 비교와 시행착오</div>
+    <p>
+      위의 제약 조건을 만족하는 전처리 파이프라인을 설계하기 위해 총 네 가지 후보 기술을 순차적으로 시도하고
+      평가했다. 각 시도의 접근, 발견된 문제점, 그리고 다음 시도로 이어진 도출 과정을 차례로 정리한다.
+    </p>
+
+    <!-- 시도 1 -->
+    <div class="trial">
+      <div class="trial-header">
+        <span class="trial-tag reject">시도 1 · 폐기</span>
+        <span class="trial-title">SAM (마스킹) + LaMa (인페인팅)</span>
+      </div>
+      <div class="trial-body">
+        <p><strong>접근.</strong> Segment Anything 계열 모델로 가구 마스크를 만들고, 장애물이 차지하는 영역만 LaMa 인페인팅 모델로 채워 자연스럽게 복원하는 2단계 파이프라인.</p>
+        <p><strong>발견된 문제 — 인페인팅 품질 부족.</strong> LaMa는 마스크 영역의 픽셀을 주변 컨텍스트로부터 추정해 채우는 방식인데, 가구 표면처럼 일관된 텍스처가 큰 면적으로 이어져야 하는 경우 결과가 심하게 흐릿(blur)하게 출력되었다. 텍스처 디테일(나뭇결, 직물의 짜임새 등)이 회색조 평균에 가깝게 뭉개졌다.</p>
+        <p><strong>결과.</strong> 인페인팅된 가구 표면이 3D 생성 모델의 입력으로 사용되었을 때, 생성된 메쉬의 텍스처가 부자연스럽게 흐릿한 영역을 포함하게 되어 최종 결과물의 품질이 사용자에게 보여 줄 수준에 미치지 못했다.</p>
+        <p><strong>다음 단계로의 도출.</strong> LaMa 단독으로는 텍스처 재현 한계가 명확함을 확인. 더 발전된 생성형 인페인팅 모델(Diffusion 기반)을 검토하기로 결정.</p>
+
+        <figure>
+          <div class="img-placeholder">
+            <div class="img-placeholder-label">PLACEHOLDER · IMG-T1</div>
+            <div class="img-placeholder-desc">시도 1 결과 예시 — LaMa 인페인팅 후 가구 표면이 흐릿하게 처리된 사례 (사용자 추가 예정)</div>
+          </div>
+          <figcaption>그림 1. SAM + LaMa 파이프라인의 인페인팅 품질 한계</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <!-- 시도 2 -->
+    <div class="trial">
+      <div class="trial-header">
+        <span class="trial-tag reject">시도 2 · 폐기</span>
+        <span class="trial-title">Nano Banana 단독 (end-to-end 위탁)</span>
+      </div>
+      <div class="trial-body">
+        <p><strong>접근.</strong> Google의 Nano Banana(Gemini 3 Pro Image) API에 원본 이미지와 "가구만 남기고 모든 장애물과 배경을 제거하라"는 지시 프롬프트를 함께 보내, 전처리 전 과정을 단일 모델 호출로 위탁.</p>
+        <p><strong>발견된 문제 — 가구 비율 변형.</strong> Nano Banana는 본질적으로 입력 이미지를 "참고"하여 완전히 새로운 이미지를 생성하는 생성 모델이다. 결과적으로 가구의 종횡비, 다리 위치, 시트의 곡률 등 세부 구조가 미세하게 변형되었다. 사람의 눈으로는 자연스러워 보이지만, 픽셀 단위로 보면 원본 가구와 분명히 다른 가구가 그려졌다.</p>
+        <div class="danger-box"><strong>비율 보존 제약 위배.</strong> 사용자가 실제 구매하려는 가구와 비율이 다른 3D 모델이 생성되면 AR 배치 결과를 신뢰할 수 없게 된다. 본 서비스의 핵심 가치를 직접적으로 훼손하는 결정적 결함.</div>
+        <p><strong>다음 단계로의 도출.</strong> 단일 모델로 모든 처리를 위탁하는 접근은 "생성 모델은 항상 재창작한다"는 본질적 한계 때문에 불가. 가구 본체 픽셀은 절대 손대지 않고, 장애물 영역만 부분적으로 인페인팅하는 하이브리드 구조로 회귀.</p>
+
+        <figure>
+          <div class="img-placeholder">
+            <div class="img-placeholder-label">PLACEHOLDER · IMG-T2</div>
+            <div class="img-placeholder-desc">시도 2 결과 예시 — 원본 가구와 Nano Banana 단독 출력의 비율 비교 (사용자 추가 예정)</div>
+          </div>
+          <figcaption>그림 2. Nano Banana 단독 사용 시의 가구 비율 변형</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <!-- 시도 3 -->
+    <div class="trial">
+      <div class="trial-header">
+        <span class="trial-tag reject">시도 3 · 폐기</span>
+        <span class="trial-title">SAM + Flux.1 (인페인팅) + 부분 합성</span>
+      </div>
+      <div class="trial-body">
+        <p><strong>접근.</strong> SAM으로 가구와 장애물의 마스크를 만들고, Flux.1-Fill-dev(Black Forest Labs)로 장애물 영역을 인페인팅한 뒤, 인페인팅 결과 중 마스크 영역만 잘라내 원본에 합성하는 방식. 시도 1의 LaMa를 더 강력한 디퓨전 모델로 교체한 구조.</p>
+        <p><strong>발견된 문제 1 — SAM3 후처리 호환성 결여.</strong> Flux 인페인팅 결과는 사람의 눈에 매우 자연스러웠지만, 인페인팅된 가구를 SAM3로 다시 마스킹하면 인페인팅된 부분을 가구로 인식하지 못하는 현상이 반복적으로 관찰되었다. SAM3 가 인페인팅된 영역의 텍스처를 가구 본체와 별개의 객체로 분류해 마스크에서 빠뜨렸고, 결과적으로 03_final_cutout.png에 가구 본체에 구멍이 뚫린 형태로 출력되었다.</p>
+        <p><strong>발견된 문제 2 — 운영 비용·지연.</strong> Flux.1-Fill-dev는 약 20GB VRAM이 요구되며 로컬 GPU에서 추론이 이루어진다. RunPod 등의 GPU 인스턴스에서 24/7 운영 시 월 비용이 무겁고, 한 번의 추론에 5-10초 이상이 소요되어 사용자 대기 시간 제약을 초과한다.</p>
+        <p><strong>다음 단계로의 도출.</strong> 인페인팅 모델 자체보다 그 결과가 후속 SAM3 마스킹과 호환되어야 함을 확인. 또한 비용·지연 측면에서 API 기반 모델이 유리. Nano Banana를 시도 2와 다른 방식(부분 인페인팅)으로 재투입하기로 결정.</p>
+
+        <figure>
+          <div class="img-placeholder">
+            <div class="img-placeholder-label">PLACEHOLDER · IMG-T3</div>
+            <div class="img-placeholder-desc">시도 3 결과 예시 — Flux 인페인팅 후 SAM3 재마스킹에서 가구 일부가 누락된 케이스 (사용자 추가 예정)</div>
+          </div>
+          <figcaption>그림 3. SAM + Flux 파이프라인의 SAM3 후처리 호환성 문제</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <!-- 시도 4 -->
+    <div class="trial" style="border-color:var(--success);border-width:2px">
+      <div class="trial-header">
+        <span class="trial-tag adopt">시도 4 · 최종 채택</span>
+        <span class="trial-title">SAM3 + Nano Banana Pro API + BrushNet 합성</span>
+      </div>
+      <div class="trial-body">
+        <p><strong>접근.</strong> Meta의 SAM 3로 가구 마스크와 장애물 마스크를 생성하고, 장애물 영역을 Nano Banana Pro API(Gemini 3 Pro Image)로 인페인팅한 뒤, BrushNet 스타일의 합성 기법으로 인페인팅 결과 중 장애물 마스크 영역에 해당하는 픽셀만 원본 위에 paste 한다. 가구 본체의 픽셀은 원본에서 한 픽셀도 변형되지 않는다.</p>
+        <p><strong>장점 1 — 비율 보존 절대 보장.</strong> BrushNet 합성 단계에서 가구 마스크 외부의 픽셀은 원본 그대로 유지되므로, 가구의 종횡비·외곽 형태·세부 디테일이 100% 보존된다. 시도 2에서 문제가 되었던 비율 변형이 구조적으로 발생할 수 없다.</p>
+        <p><strong>장점 2 — SAM3 후처리 호환성.</strong> Nano Banana로 인페인팅된 영역은 SAM3가 가구 본체로 잘 인식한다. 시도 3에서 문제가 되었던 SAM3 재마스킹 시의 구멍 발생이 사라졌다.</p>
+        <p><strong>장점 3 — 운영 비용·지연.</strong> Nano Banana는 외부 API 호출 방식이므로 로컬 GPU 부담이 없다. 1회 인페인팅 호출이 약 5-10초로 Flux 대비 빠르고, RunPod 등의 GPU 인스턴스에는 SAM3만 두면 되어 VRAM 요구가 16GB 정도로 낮아진다.</p>
+        <p><strong>장점 4 — 분리된 마스크 운용.</strong> Banana 모델에 보내는 입력 마스크는 dilation 15px이 적용되어 장애물의 그림자와 경계까지 포함하지만, BrushNet 합성에 사용되는 마스크는 dilation 전 원본 마스크이다. 이로써 인페인팅이 자연스럽게 그림자까지 처리하면서도, 가구 본체 영역으로의 침범이 발생하지 않는다.</p>
+
+        <div class="success-box"><strong>최종 채택 근거.</strong> 절대 제약(비율 보존)을 구조적으로 만족하면서, 시각적 자연스러움, SAM3 후처리 호환성, 운영 비용, 처리 속도의 네 가지 부차 제약을 모두 합리적 수준에서 충족한 유일한 후보.</div>
+
+        <figure>
+          <div class="img-placeholder">
+            <div class="img-placeholder-label">PLACEHOLDER · IMG-T4</div>
+            <div class="img-placeholder-desc">시도 4 결과 예시 — 최종 파이프라인의 처리 단계별 출력 비교 (사용자 추가 예정)</div>
+          </div>
+          <figcaption>그림 4. SAM3 + Nano Banana + BrushNet 파이프라인 처리 단계</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <!-- 비교 표 -->
+    <div class="subsection">
+      <div class="subsection-title">2.1 후보 기술 비교표</div>
+      <div class="table-wrap">
+        <table>
+          <tr>
+            <th>평가 항목</th>
+            <th>시도 1<br>SAM+LaMa</th>
+            <th>시도 2<br>Banana 단독</th>
+            <th>시도 3<br>SAM+Flux</th>
+            <th>시도 4<br>SAM3+Banana+BrushNet</th>
+          </tr>
+          <tr><td>비율 보존</td><td>○ 가능</td><td>✗ 변형</td><td>○ 가능</td><td>◎ 절대 보장</td></tr>
+          <tr><td>인페인팅 품질</td><td>✗ blur 심함</td><td>○ 자연</td><td>○ 자연</td><td>○ 자연</td></tr>
+          <tr><td>SAM3 후처리 호환</td><td>○ 가능</td><td>해당 없음</td><td>✗ 구멍 발생</td><td>○ 호환</td></tr>
+          <tr><td>GPU 부담</td><td>중</td><td>없음 (API)</td><td>큼 (20GB+)</td><td>적음 (16GB)</td></tr>
+          <tr><td>처리 속도</td><td>중</td><td>10-15초</td><td>10-15초</td><td>5-10초</td></tr>
+          <tr><td>운영 비용</td><td>중</td><td>API 비용</td><td>큼 (GPU)</td><td>중간 (API+소형GPU)</td></tr>
+          <tr><td>채택 여부</td><td>폐기</td><td>폐기</td><td>폐기</td><td><strong style="color:var(--success)">채택</strong></td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3. 최종 파이프라인 ============ -->
+<section>
+  <div class="container">
+    <div class="section-title"><span class="section-num">3</span>최종 채택 파이프라인 상세</div>
+
+    <p>
+      최종 채택된 파이프라인은 SAM3로 가구와 장애물의 위치를 픽셀 단위로 결정하고, Nano Banana Pro API로
+      장애물 영역의 시각적 재구성을 수행한 뒤, BrushNet 합성으로 두 결과를 결합한다. 각 단계의 역할은 명확히
+      분리되어 있어, 한 단계의 오류가 다른 단계의 결과에 누적되지 않도록 설계되었다.
+    </p>
+
+    <div class="pipeline-diagram">
+      <svg class="pipeline-svg" viewBox="0 0 760 762" role="img"
+           aria-label="원본 이미지를 GPT-4o가 가구 분류하고, 그 가구 종류로 장애물을 식별한다. GPT-4o는 두 SAM3 단계 모두에 텍스트 프롬프트(짧은 명사구)를 제공한다. 한쪽은 SAM3 가구 마스크로 이어지고, 다른 한쪽은 SAM3 장애물 마스크로 이어진다. 장애물 마스크가 검출되지 않으면 가구 마스크가 곧바로 최종 컷아웃이 된다. 장애물이 있으면 Nano Banana가 장애물 영역만 인페인팅하고, 이미지 합성 단계에서 원본 이미지를 베이스로 장애물 마스크 영역만 인페인팅 결과로 교체한 뒤, SAM3 재마스킹을 거쳐 최종 컷아웃을 만든다.">
+        <defs>
+          <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#94A3B8"/>
+          </marker>
+        </defs>
+
+        <!-- ===== 연결선 (박스보다 먼저 그려 박스가 위로 오게) ===== -->
+        <!-- 원본 → 가구 분류 -->
+        <path d="M380,70 L380,110" class="pl" marker-end="url(#ah)"/>
+        <!-- 가구 분류 → 2갈래 (가구 마스크 / 장애물 식별) -->
+        <path d="M380,160 L380,182" class="pl"/>
+        <path d="M380,182 L200,182 L200,202" class="pl" marker-end="url(#ah)"/>
+        <path d="M380,182 L560,182 L560,202" class="pl" marker-end="url(#ah)"/>
+        <!-- 가구 마스크 → 최종 컷아웃 (장애물 마스크 없을 때 바로 연결) -->
+        <path d="M200,252 L200,701 L295,701" class="pl" marker-end="url(#ah)"/>
+        <!-- 우: 장애물 식별 → 장애물 마스크 → Nano Banana -->
+        <path d="M560,252 L560,294" class="pl" marker-end="url(#ah)"/>
+        <path d="M560,344 L560,386" class="pl" marker-end="url(#ah)"/>
+        <!-- 원본 이미지 → 합성 (원본 픽셀 base, 우측 진입) -->
+        <path d="M465,45 L712,45 L712,528 L490,528" class="pl" marker-end="url(#ah)"/>
+        <!-- Nano Banana → 합성 (인페인팅 결과, 우측 진입) -->
+        <path d="M560,436 L560,505 L490,505" class="pl" marker-end="url(#ah)"/>
+        <!-- 합성 → 재마스킹 → 최종 -->
+        <path d="M380,542 L380,584" class="pl" marker-end="url(#ah)"/>
+        <path d="M380,634 L380,676" class="pl" marker-end="url(#ah)"/>
+
+        <!-- 흐름 라벨 -->
+        <text x="250" y="176" class="pl-tag" text-anchor="middle">텍스트 프롬프트</text>
+        <text x="470" y="176" class="pl-tag" text-anchor="middle">가구 종류 활용</text>
+        <text x="576" y="278" class="pl-tag">텍스트 프롬프트</text>
+        <text x="576" y="372" class="pl-tag banana-tag">장애물 영역만</text>
+        <text x="700" y="300" class="pl-tag" text-anchor="end">원본 픽셀</text>
+        <text x="552" y="478" class="pl-tag" text-anchor="end">인페인팅 결과</text>
+        <text x="192" y="476" class="pl-tag" text-anchor="end">장애물 없을 때</text>
+
+        <!-- ===== 박스 ===== -->
+        <!-- 원본 -->
+        <g class="b input"><rect x="295" y="20" width="170" height="50" rx="9"/>
+          <text x="380" y="50">원본 이미지</text></g>
+
+        <!-- GPT 가구 분류 (두 갈래의 공통 출발점) -->
+        <g class="b gpt"><rect x="295" y="110" width="170" height="50" rx="9"/>
+          <text x="380" y="130">GPT-4o</text><text x="380" y="148" class="sub">가구 분류</text></g>
+
+        <!-- 좌: SAM 가구 마스크 / 우: GPT 장애물 식별 -->
+        <g class="b sam"><rect x="115" y="202" width="170" height="50" rx="9"/>
+          <text x="200" y="222">SAM3</text><text x="200" y="240" class="sub">가구 마스크</text></g>
+        <g class="b gpt"><rect x="475" y="202" width="170" height="50" rx="9"/>
+          <text x="560" y="222">GPT-4o</text><text x="560" y="240" class="sub">장애물 식별</text></g>
+
+        <!-- SAM 장애물 마스크 -->
+        <g class="b sam"><rect x="475" y="294" width="170" height="50" rx="9"/>
+          <text x="560" y="314">SAM3</text><text x="560" y="332" class="sub">장애물 마스크</text></g>
+
+        <!-- Nano Banana 인페인팅 -->
+        <g class="b banana"><rect x="475" y="386" width="170" height="50" rx="9"/>
+          <text x="560" y="406">Nano Banana</text><text x="560" y="424" class="sub">인페인팅</text></g>
+
+        <!-- 이미지 합성 (원본 base + 인페인팅 결과 교체) -->
+        <g class="b fuse"><rect x="270" y="492" width="220" height="50" rx="9"/>
+          <text x="380" y="512">이미지 합성</text><text x="380" y="530" class="sub">장애물 영역만 원본에 교체</text></g>
+
+        <!-- SAM3 재마스킹 -->
+        <g class="b sam"><rect x="295" y="584" width="170" height="50" rx="9"/>
+          <text x="380" y="604">SAM3</text><text x="380" y="622" class="sub">재마스킹</text></g>
+
+        <!-- 최종 컷아웃 -->
+        <g class="b output"><rect x="295" y="676" width="170" height="50" rx="9"/>
+          <text x="380" y="706">최종 컷아웃</text></g>
+      </svg>
+    </div>
+    <p class="code-caption">그림 5. 최종 채택 파이프라인의 처리 흐름 — GPT-4o가 먼저 가구를 분류하고, 그 가구 종류로
+      장애물을 식별한다. GPT-4o는 가구 마스킹·장애물 마스킹 두 SAM3 단계 모두에 텍스트 프롬프트(짧은 명사구)를
+      제공한다. <strong>장애물 마스크가 검출되지 않으면 가구 마스크가 곧바로 최종 컷아웃이 된다.</strong> 장애물이
+      있으면 Nano Banana가 장애물 영역만 인페인팅하고, <strong>이미지 합성 단계에서 원본 이미지를 베이스로 두고
+      장애물 마스크 영역만 인페인팅 결과로 교체</strong>(가구 본체 픽셀 100% 보존)한 뒤 SAM3 재마스킹으로 최종
+      컷아웃을 만든다.</p>
+
+    <div class="subsection">
+      <div class="subsection-title">3.1 SAM3 가구 마스킹</div>
+      <p>
+        SAM3는 짧은 명사구(noun phrase) 입력을 받아 이미지 내에서 해당 객체에 속하는 모든 픽셀을 마스크 형태로
+        반환하는 Promptable Concept Segmentation(PCS) 모델이다. 본 파이프라인에서는 GPT-4o가 동적으로 생성한
+        가구 명사구(예: <code>["sofa", "sofa cushion"]</code>)를 입력으로 SAM3를 호출하여, 가구 본체와 그에
+        딸려있는 정상 부속물(쿠션, 매트리스 등)이 모두 포함된 통합 마스크를 생성한다.
+      </p>
+      <p>
+        SAM3는 각 명사구로 독립적인 호출을 수행하고, 그 결과 마스크들의 합집합(union)을 최종 가구 마스크로
+        삼는다. 합치는 단계에서 너무 작은 마스크(노이즈, 전체의 0.1% 미만)와 너무 큰 마스크(가구가 아니라
+        배경 전체를 잡은 경우, 95% 초과)는 자동으로 걸러진다.
+      </p>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">3.2 장애물 마스킹 (Contaminant Mask)</div>
+      <p>
+        GPT-4o가 식별한 장애물 객체 리스트(예: <code>["remote control", "batteries", "monitor arm", "power strip"]</code>)를
+        SAM3에 다시 짧은 명사구 형태로 입력하여, 각 객체의 위치 마스크를 만든다. 이 단계에서는 confidence 임계값
+        0.20을 적용하여 신뢰도가 낮은 박스를 제외하고, 또한 가구 본체 박스와 85% 이상 겹치는 박스(즉 가구 자체를
+        장애물로 잘못 잡은 경우)도 제거한다. 각 객체별 마스크의 합집합이 최종 contaminant 마스크가 된다.
+      </p>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">3.3 Nano Banana 인페인팅</div>
+      <p>
+        contaminant 마스크 영역만 흰색으로 칠한 힌트 이미지를 Nano Banana Pro API에 입력하고,
+        가구 종류별로 작성된 자연어 프롬프트(예: 소파의 경우 "smooth continuous sofa upholstery fabric"
+        강조)를 함께 보낸다. 모델은 흰색 영역에 가구 본체의 텍스처가 자연스럽게 이어지도록 인페인팅된 결과
+        이미지를 반환한다.
+      </p>
+      <p>
+        결정성 확보를 위해 API 호출 시 <code>seed=42</code>와 <code>temperature=0.2</code>를 명시적으로
+        지정한다. 또한 모델 입력으로 보내는 마스크는 dilation 15px이 적용되어 장애물의 그림자와 미세한
+        경계까지 포함되도록 확장된다 — 이는 인페인팅이 가구의 자연스러운 표면을 그리도록 컨텍스트를 풍부하게
+        제공하기 위함이다.
+      </p>
+
+      <pre><code># inpainting_banan.py (단순화 표기)
+response = client.models.generate_content(
+    model="gemini-3-pro-image-preview",
+    contents=[prompt, hint_image],
+    config=types.GenerateContentConfig(
+        response_modalities=["IMAGE", "TEXT"],
+        seed=42,
+        temperature=0.2,
+    ),
+)</code></pre>
+      <p class="code-caption">코드 1. Nano Banana API 호출 (결정성 설정 강조)</p>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">3.4 BrushNet 합성</div>
+      <p>
+        Nano Banana가 반환한 인페인팅 결과는 원본 크기로 LANCZOS 리사이즈된 후, BrushNet 스타일로 원본과
+        합성된다. 합성에 사용되는 마스크는 <strong>dilation 전 원본 마스크</strong>이다. dilation된 마스크를
+        사용하면 가구 본체 가장자리의 약 15px이 인페인팅 결과로 교체되어 가구 본체가 침범되는데, 원본 마스크를
+        사용하면 이 침범을 차단할 수 있다.
+      </p>
+      <p>
+        합성 마스크의 가장자리에는 1.5px Gaussian Blur가 적용되어, 인페인팅 결과와 원본 픽셀의 경계가 부드럽게
+        블렌딩된다. 결과적으로 마스크 영역 내부는 100% 인페인팅 픽셀, 마스크 영역 외부는 100% 원본 픽셀이며,
+        가장자리 1-3px만 자연스러운 블렌딩으로 처리된다.
+      </p>
+
+      <pre><code># inpainting_banan.py BrushNet 합성 부분 (요약)
+# 원본 마스크 (dilation 안 함) 사용 — 가구 본체 영역 100% 보존
+hard_mask_arr = (np.array(original_mask) > 127).astype(np.uint8) * 255
+hard_mask = Image.fromarray(hard_mask_arr, mode="L")
+composite_mask = hard_mask.filter(ImageFilter.GaussianBlur(radius=1.5))
+
+composite = image.copy()
+composite.paste(result, mask=composite_mask)</code></pre>
+      <p class="code-caption">코드 2. BrushNet 합성 — 원본 마스크로 합성하여 가구 본체 침범 방지</p>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">3.5 인페인팅 후 SAM3 재마스킹</div>
+      <p>
+        contaminant가 사라진 깨끗한 이미지에 SAM3를 다시 한 번 실행하여, 장애물이 가리고 있던 가구 본체
+        영역까지 포함하는 새로운 가구 마스크를 생성한다. 이 마스크가 3D 생성 모델의 입력이 되는 최종
+        컷아웃(06_generation_cutout.png)의 기반이 된다.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4. GPT-4o 활용 ============ -->
+<section>
+  <div class="container">
+    <div class="section-title"><span class="section-num">4</span>GPT-4o의 파이프라인 전반 역할</div>
+
+    <p>
+      GPT-4o는 본 파이프라인에서 단순한 보조 도구가 아니라, SAM3와 Nano Banana 사이를 연결하는 의미 해석 계층
+      역할을 수행한다. 파이프라인 전체에서 GPT-4o는 5개의 독립적 호출을 통해 다음과 같은 역할을 한다.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <tr><th>호출</th><th>역할</th><th>입력</th><th>출력</th></tr>
+        <tr>
+          <td>1. 가구 종류 분류</td>
+          <td>이미지에 어떤 가구가 있는지 식별하고, SAM3에 입력할 짧은 명사구 리스트 생성</td>
+          <td>이미지 + 게시글 제목/본문</td>
+          <td><code>furniture_type</code>, <code>sam3_segmentation_prompts</code></td>
+        </tr>
+        <tr>
+          <td>2. 이미지 선택</td>
+          <td>여러 후보 이미지 중 가구가 가장 잘 보이는 이미지를 선택</td>
+          <td>이미지 목록</td>
+          <td>최적 이미지 index</td>
+        </tr>
+        <tr>
+          <td>3. 주요 장애물 분석</td>
+          <td>가구 구조를 크게 가리는 물체(사람, 큰 박스 등) 식별</td>
+          <td>이미지 + 가구 종류</td>
+          <td><code>has_major_obstacle</code>, 장애물 객체 리스트</td>
+        </tr>
+        <tr>
+          <td>4. 오염물 분석</td>
+          <td>3D 모델 생성에 방해되는 작은 물체(리모콘, 케이블, 모니터암 등) 식별</td>
+          <td>이미지 + 가구 종류</td>
+          <td><code>contaminants</code> 객체 리스트</td>
+        </tr>
+        <tr>
+          <td>5. 치수 추정</td>
+          <td>가구의 width, depth, height를 cm 단위로 추정</td>
+          <td>이미지 + 게시글 텍스트</td>
+          <td><code>width_cm</code>, <code>depth_cm</code>, <code>height_cm</code></td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">4.1 일관된 판단 기준</div>
+      <p>
+        가구 분류 호출(1번)과 오염물 분석 호출(4번)은 모두 "어떤 부속물이 가구의 일부이고, 어떤 부속물이
+        제거 대상인가"라는 같은 판단을 수행한다. 이 두 호출이 다른 판단을 내리면 모순이 발생한다 — 예를
+        들어 1번 호출이 베개를 가구의 일부로 분류하여 SAM3 마스크에 포함시키는데, 4번 호출이 동시에
+        그 베개를 contaminant로 분류하면 베개 영역에서 마스킹과 인페인팅이 충돌한다.
+      </p>
+      <p>
+        이를 방지하기 위해 두 GPT-4o 호출에 동일한 판단 기준을 명시한 시스템 프롬프트를 사용한다.
+        핵심은 <strong>"built-in (가구의 일부) vs user-placed (제거 대상)"</strong> 이분법이다:
+      </p>
+      <ul style="margin-left:22px">
+        <li><strong>Built-in (가구의 일부)</strong>: 제품과 함께 출고되는 부속물. 본체와 같은 직물/재질/색을 가지고, 정해진 위치에 자리 잡고 있으며, 제품 사진 스타일링의 일환으로 보임 (예: 매칭되는 등받이 쿠션, 일체형 매트리스)</li>
+        <li><strong>User-placed (제거 대상)</strong>: 사용자가 일시적으로 올려놓은 항목. 본체와 시각적으로 명백히 다른 직물/색, 자연스럽게 걸쳐있는 모습, 제거 가능한 장식이나 개인 소지품 (예: 캐주얼하게 드리워진 담요, 리모콘, 컵, 모니터암 클램프)</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">4.2 결정성 (Determinism) 확보</div>
+      <p>
+        GPT-4o는 기본 설정에서 응답에 약간의 확률적 변동성이 있어 동일 입력에 대해서도 미세하게 다른 응답을
+        생성할 수 있다. 본 파이프라인에서는 모든 GPT-4o 호출에 <code>temperature=0</code>을 적용하여
+        가능한 한 결정적인 응답을 받도록 설정했다. 이로써 같은 사용자가 같은 사진을 여러 번 처리해도 거의
+        동일한 결과를 받을 수 있어, 디버깅과 회귀 테스트가 가능해진다.
+      </p>
+      <div class="info-box">
+        <strong>결정성 설정 요약.</strong>
+        GPT-4o 호출 5군데 모두 <code>temperature=0</code>;
+        Nano Banana API <code>seed=42, temperature=0.2</code>;
+        SAM3 inference 자체는 모델 특성상 결정적;
+        BrushNet 합성은 순수 픽셀 연산으로 결정적.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5. SAM3 논문 기반 프롬프트 설계 ============ -->
+<section>
+  <div class="container">
+    <div class="section-title"><span class="section-num">5</span>SAM3 논문 기반 프롬프트 설계</div>
+
+    <p>
+      본 파이프라인에서 GPT-4o가 SAM3로 넘기는 텍스트 프롬프트는 임의로 작성된 것이 아니라, SAM3 모델의
+      공식 논문에서 명시한 입력 사양을 충실히 따르도록 시스템 프롬프트로 강제되었다. 이는 단순히 모델이
+      작동하도록 만든 것이 아니라, 모델이 가장 잘 작동할 수 있는 입력 조건을 적극적으로 활용한 설계라는
+      점을 강조하고자 한다.
+    </p>
+
+    <div class="subsection">
+      <div class="subsection-title">5.1 SAM3 논문이 명시한 입력 사양</div>
+      <div class="quote-box">
+        "We constrain text to simple noun phrases (NPs) such as 'red apple' or 'striped cat'.
+        While SAM 3 is not designed for long referring expressions or queries requiring reasoning,
+        we show that it can be straightforwardly combined with a Multimodal Large Language Model
+        (MLLM) to handle more complex language prompts."
+        <cite>— Carion et al., "SAM 3: Segment Anything with Concepts", Meta Superintelligence Labs (2024), § 2 PCS 정의 부분</cite>
+      </div>
+      <p>이 인용에서 다음 두 가지가 분명하다.</p>
+      <ol style="margin-left:22px">
+        <li>SAM3는 텍스트 입력을 <strong>"short noun phrase"</strong>로 제한한다.</li>
+        <li>긴 지시 표현(referring expression)이나 추론이 필요한 쿼리는 <strong>처리 대상이 아니다</strong>. 대신 MLLM을 결합해 복잡한 입력을 단순 명사구로 변환하는 접근을 권장한다.</li>
+      </ol>
+      <p>
+        본 파이프라인에서 GPT-4o는 위 인용 마지막 부분에서 언급된 "MLLM" 역할을 정확히 수행한다.
+        사용자의 게시물(이미지 + 텍스트)을 받아 SAM3가 요구하는 짧은 명사구 형태로 변환해 전달한다.
+      </p>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">5.2 GPT-4o 시스템 프롬프트의 SAM3 정합 규칙</div>
+      <p>
+        SAM3 논문 인용을 그대로 따르기 위해, 가구 분류 호출의 시스템 프롬프트에는 다음 규칙들을 명시적으로
+        강제하고 있다.
+      </p>
+
+      <pre><code># app_core.py - classify_furniture_from_image 시스템 프롬프트 발췌
+Rules for sam3_segmentation_prompts (CRITICAL — read carefully):
+- SAM3 requires SHORT, ATOMIC noun phrases (1-3 words preferred, max 4).
+- Do NOT combine accessories with 'X with Y and Z' — SAM3's embedding
+  degrades to 'X' and the accessories are NOT picked up. List each item
+  SEPARATELY.
+- The first phrase MUST be the bare furniture type (matching the type field).
+- Include 1-5 phrases total.
+
+Examples:
+  Sofa with matching back cushions  → ['sofa', 'sofa cushion']
+  Sofa with casually draped blanket → ['sofa']
+  Bed with integrated mattress      → ['bed', 'mattress', 'pillow']
+  Bare desk                         → ['desk']</code></pre>
+      <p class="code-caption">코드 3. SAM3 논문 가이드라인을 강제하는 GPT-4o 시스템 프롬프트 일부</p>
+
+      <p>이 시스템 프롬프트는 두 가지 SAM3 동작 특성에 직접 대응한다:</p>
+      <ul style="margin-left:22px">
+        <li>
+          <strong>Compound phrase 분해.</strong> "sofa with cushions and blanket" 같은 합성 구문을 SAM3에
+          입력하면, SAM3의 CLIP 계열 텍스트 인코더가 이를 본질적으로 "sofa"의 임베딩으로 환원해 처리하며,
+          "cushions"와 "blanket"의 의미를 제대로 활용하지 않는다. 이는 본 프로젝트의 검증 과정에서
+          반복적으로 확인되었다. 따라서 부속물을 별도의 명사구로 분리하면, SAM3가 각각의 명사구에 대해
+          독립적 detection을 수행하고 그 결과들의 합집합을 가구 마스크로 사용하게 된다.
+        </li>
+        <li>
+          <strong>위치 수식어 회피.</strong> "remote control top left area of tabletop" 같이 명사구 뒤에
+          위치 수식어가 붙는 경우 SAM3의 detection score가 임계값 아래로 떨어진다. 본 시스템에서는 GPT-4o의
+          응답 중 <code>name</code> 필드를 짧은 명사구로만 제한하고, 위치 정보는 별도의 <code>location</code>
+          필드에 두어 표시용으로만 활용한다.
+        </li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">5.3 contaminant 분석 GPT 호출의 SAM3 정합</div>
+      <p>
+        가구 분류 호출뿐 아니라 오염물 분석 호출의 응답에서도 <code>name</code> 필드를 SAM3에 그대로 전달
+        가능한 짧은 명사구로 강제한다. 다음 규칙이 시스템 프롬프트에 명시되어 있다.
+      </p>
+      <pre><code># furniture_analysis_service.py - analyze_generation_contaminants 발췌
+IMPORTANT: each 'name' field must be a SHORT noun phrase (1-3 words) such as
+'monitor arm', 'power strip', 'remote control'. Do NOT include locations or
+full sentences in 'name'. Put spatial details in 'location' only.</code></pre>
+      <p class="code-caption">코드 4. contaminant 분석 GPT 호출에서도 SAM3 호환 명사구 강제</p>
+      <p>
+        이로써 GPT-4o의 오염물 분석 결과를 추가 후처리 없이 곧바로 SAM3 호출에 사용할 수 있고, 본 파이프라인의
+        contaminant 마스킹 단계는 SAM3 논문이 명시한 권장 패턴과 정확히 일치하게 된다.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6. 추가 기법 ============ -->
+<section>
+  <div class="container">
+    <div class="section-title"><span class="section-num">6</span>SAM3 의존도 완화 기법</div>
+
+    <p>
+      SAM3가 본 파이프라인의 가구 마스킹 정확도를 결정하지만, SAM3 마스킹이 항상 완벽하지는 않다. 텍스처가
+      가구 본체와 다른 부속물(소파의 매트리스 색이 약간 다른 경우 등)을 SAM3가 별개 객체로 판단해 가구
+      마스크에서 빠뜨릴 수 있다. 본 절은 이러한 SAM3의 한계를 마스크 수준에서 보강하는 두 가지 기법을 다룬다.
+    </p>
+
+    <div class="subsection">
+      <div class="subsection-title">6.1 가구 마스크 내부 구멍 자동 contaminant 처리</div>
+      <p>
+        SAM3가 가구라고 판단하지 않은 모든 영역을 contaminant로 간주하는 것은 과도하지만, "가구의 외곽 실루엣
+        안에 있으면서 가구 마스크가 아닌 영역"은 정의상 contaminant이다. 이 영역은 가구의 일부일 수밖에 없는
+        공간적 위치에 있는데도 SAM3가 가구로 보지 않은 영역, 즉 베개나 담요처럼 가구 위에 얹혀있는 작은 물체일
+        가능성이 높다.
+      </p>
+      <p>
+        이를 자동 검출하기 위해 본 시스템은 가구 마스크에 OpenCV의 morphological closing 연산을 적용해
+        "가구의 이상적 실루엣"을 만든 뒤, 실루엣과 마스크의 차집합을 계산한다. 이 차집합 중 너무 작은 노이즈
+        (전체 픽셀의 0.05% 미만)를 제외한 나머지가 자동 contaminant 마스크가 되어, GPT가 명시적으로 식별한
+        contaminant 마스크와 합집합으로 결합된다.
+      </p>
+      <pre><code># segmentation_service.py - compute_internal_holes 핵심 로직
+binary = (mask > 127).astype(np.uint8)
+k = max(11, int(min(h, w) * closing_kernel_ratio))
+kernel = np.ones((k, k), np.uint8)
+closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+holes = ((closed > 0) & (binary == 0)).astype(np.uint8) * 255
+# 너무 작은 노이즈 제거 후 contaminant 마스크에 union</code></pre>
+      <p class="code-caption">코드 5. 가구 마스크 내부 구멍 검출 (방식 A)</p>
+      <p>
+        이 방식은 외부 배경과 연결되지 않은 "내부 구멍"에만 적용되며, 가구 본체 영역 밖의 객체(예: 책상에
+        클램프로 부착된 모니터암)는 잡지 못한다. 따라서 이 방식은 GPT 기반 contaminant 검출을 대체하는 것이
+        아니라 보완하는 안전망 역할을 한다.
+      </p>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">6.2 GPT-4o에 의한 SAM3 명사구 동적 생성</div>
+      <p>
+        가구 카테고리별로 SAM3 명사구를 하드코딩하는 대신, GPT-4o가 이미지와 게시글 텍스트를 종합해 동적으로
+        SAM3 명사구를 생성한다. 이로써 사진에 실제로 베개가 있는 경우에만 <code>'sofa cushion'</code>이
+        명사구에 포함되고, 베개가 없는 경우에는 <code>['sofa']</code>만 사용된다.
+      </p>
+      <p>
+        또한 게시글 텍스트는 사진에 여러 가구가 있을 때 어느 것이 판매 대상인지 판단하는 데 사용된다.
+        예를 들어 사진에 소파와 의자가 함께 보이는데 게시글 제목이 "2인용 소파"라면, GPT-4o는 SAM3에
+        <code>['sofa']</code> 만 전달하여 의자가 가구 마스크에 포함되지 않도록 한다.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7. 결론 ============ -->
+<section>
+  <div class="container">
+    <div class="section-title"><span class="section-num">7</span>결론</div>
+
+    <p>
+      본 장은 가구 비율 보존이라는 절대 제약을 만족하면서 3D 생성 모델이 사용 가능한 깨끗한 가구 컷아웃을
+      만들기 위한 이미지 전처리 파이프라인의 설계 과정을 정리하였다. 4가지 후보 기술의 시행착오를 거쳐
+      최종적으로 SAM3 + Nano Banana Pro API + BrushNet 합성의 하이브리드 구조를 채택하였으며, 이 구조는
+      각 기술의 강점을 활용하면서 단일 기술의 약점을 보완하는 형태를 띤다.
+    </p>
+    <p>
+      특히 GPT-4o가 단순 보조 도구가 아닌 SAM3와 Nano Banana 사이의 의미 해석 계층 역할을 수행하도록
+      설계하였고, 이때 GPT-4o의 시스템 프롬프트는 SAM3 논문이 명시한 입력 사양을 충실히 따르도록 강제되어
+      있다. 이는 본 파이프라인이 단순히 "SAM3를 사용했다"가 아니라 "SAM3가 가장 잘 작동할 수 있는 입력
+      조건을 적극적으로 갖춘 채 사용했다"는 점에서 차별화된다.
+    </p>
+    <p>
+      이미지 전처리 모듈의 한계와 향후 개선 방향(SAM3 의존도 추가 완화, GPU 서버 분리 배포, LLM-as-judge
+      도입 등)은 본 보고서의 별도 장에서 다룬다.
+    </p>
+
+    <div class="footnote">
+      <strong>참고 문헌</strong>
+      <ol>
+        <li>Carion, N., Gustafson, L., Hu, Y.-T., et al. (2024). "SAM 3: Segment Anything with Concepts". Meta Superintelligence Labs. <em>(인용 부분: § 2 PCS Task 정의)</em></li>
+        <li>Black Forest Labs (2024). "FLUX.1 [dev] — Image generation and inpainting model". <em>(시도 3에서 검토한 디퓨전 인페인팅 모델)</em></li>
+        <li>Suvorov, R., Logacheva, E., Mashikhin, A., et al. (2022). "Resolution-robust Large Mask Inpainting with Fourier Convolutions" (LaMa). WACV 2022. <em>(시도 1에서 검토한 인페인팅 모델)</em></li>
+        <li>Google (2024). "Gemini 3 Pro Image (Nano Banana) API". <em>(최종 채택 인페인팅 엔진)</em></li>
+        <li>Ju, X., et al. (2023). "BrushNet: A Plug-and-Play Image Inpainting Model". <em>(본 파이프라인의 마스크 영역 합성 기법 명명 출처)</em></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
