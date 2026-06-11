@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { rescaleGlbToBlobUrl } from './lib/rescaleGlb'
 
 interface Dimensions {
   width: number
@@ -15,10 +16,42 @@ export default function ModelPreviewPage() {
 
   const [tab, setTab] = useState<'3d' | '치수'>('3d')
   const [loaded, setLoaded] = useState(false)
-  const [isPreparingAR, setIsPreparingAR] = useState(false) 
-  
+  const [isPreparingAR, setIsPreparingAR] = useState(false)
+  // 실측 스케일로 리패킹한 GLB blob URL (model-viewer src로 사용)
+  const [scaledGlbUrl, setScaledGlbUrl] = useState<string | null>(null)
+
   const mvRef = useRef<any>(null)
   const wasInAr = useRef(false) // 실제 AR 카메라 내부로 진입 성공했는지 여부
+
+  // GLB를 실측 W/H/D 기준으로 uniform 스케일업 후 blob으로 리패킹.
+  // 이렇게 해야 model-viewer의 Scene Viewer / Quick Look AR이 실제 크기로 배치됨.
+  useEffect(() => {
+    if (!glbUrl) return
+    let revoked = false
+    let createdUrl: string | null = null
+
+    setScaledGlbUrl(null)
+    setLoaded(false)
+    rescaleGlbToBlobUrl(glbUrl, dimensions)
+      .then((url) => {
+        if (revoked) {
+          URL.revokeObjectURL(url)
+          return
+        }
+        createdUrl = url
+        setScaledGlbUrl(url)
+      })
+      .catch((err) => {
+        // 리스케일 실패 시 원본 URL로 폴백 (크기는 GLB 고유 크기)
+        console.error('GLB 리스케일 실패, 원본으로 폴백:', err)
+        if (!revoked) setScaledGlbUrl(glbUrl)
+      })
+
+    return () => {
+      revoked = true
+      if (createdUrl) URL.revokeObjectURL(createdUrl)
+    }
+  }, [glbUrl, dimensions.width, dimensions.height, dimensions.depth])
 
   // 1. model-viewer 스크립트 동적 로드
   useEffect(() => {
@@ -53,7 +86,6 @@ export default function ModelPreviewPage() {
       const status = event.detail.status
       console.log('AR 상태 변경:', status)
       
-      // 💡 수정: 공식 카운터파트 상태인 'presenting' 일 때 비로소 진입 성공 판정을 내립니다.
       if (status === 'presenting') {
         setIsPreparingAR(false)
         wasInAr.current = true // 실제 카메라 화면이 안착했을 때만 true로 변경!
@@ -105,13 +137,36 @@ export default function ModelPreviewPage() {
     <div className="min-h-screen bg-bg flex flex-col relative">
       
       {/* AR 준비 중 전체화면 오버레이 */}
+      {/* AR 준비 중 전체화면 가이드 오버레이 */}
       {isPreparingAR && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-bg">
-          <div className="w-[48px] h-[48px] rounded-full border-[4px] border-t-accent mb-[20px]" 
-               style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)', borderTopColor: 'var(--color-accent)', animation: 'spin 0.9s linear infinite' }} />
-          <h2 className="text-[18px] font-bold text-text-primary mb-[8px]">AR 환경을 준비 중입니다...</h2>
-          <p className="text-[13px] text-text-secondary text-center leading-relaxed">
-            3D 파일 변환 및 카메라 구동에<br />최대 5~10초가 소요될 수 있습니다.
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-bg px-[28px]">
+          {/* 로딩 스피너 */}
+          <div className="w-[48px] h-[48px] rounded-full border-[4px] border-t-accent mb-[24px]" 
+              style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)', borderTopColor: 'var(--color-accent)', animation: 'spin 0.9s linear infinite' }} />
+          
+          <h2 className="text-[20px] font-bold text-text-primary mb-[12px]">AR 카메라를 켜고 있습니다</h2>
+          
+          {/* 💡 실용적인 AR 안내 가이드 박스 추가 */}
+          <div className="w-full bg-surface-2 rounded-[20px] p-[20px] mb-[24px] border border-border">
+            <p className="text-[14px] font-bold text-text-primary mb-[10px] text-center">💡 이렇게 사용해 보세요!</p>
+            <ul className="text-[13px] text-text-secondary space-y-[8px] break-keep">
+              <li className="flex items-start gap-[6px]">
+                <span className="text-accent">1.</span>
+                <span>카메라가 켜지면 **주변 바닥을 천천히 비추며** 스마트폰을 움직여 주세요.</span>
+              </li>
+              <li className="flex items-start gap-[6px]">
+                <span className="text-accent">2.</span>
+                <span>바닥이 인식되면 소파가 나타납니다. **한 손가락으로 드래그**하여 이동할 수 있습니다.</span>
+              </li>
+              <li className="flex items-start gap-[6px]">
+                <span className="text-accent">3.</span>
+                <span>**두 손가락을 돌리면** 가구의 방향을 회전할 수 있습니다.</span>
+              </li>
+            </ul>
+          </div>
+
+          <p className="text-[12px] text-text-thirdly text-center">
+            3D 파일 변환 및 카메라 구동에 최대 5~10초가 소요됩니다.
           </p>
         </div>
       )}
@@ -149,18 +204,22 @@ export default function ModelPreviewPage() {
         <div className="mx-[20px] rounded-[24px] overflow-hidden relative" style={{ background: 'var(--color-surface-2)', height: 320 }}>
           <model-viewer
             ref={mvRef}
-            src={glbUrl}
+            src={scaledGlbUrl ?? undefined}
             alt="3D 가구 모델"
             ar
-            // 💡 안드로이드 구형/신형 브라우저 파편화를 막기 위해 scene-viewer 모드를 안정적으로 결합했습니다.
             ar-modes="webxr scene-viewer quick-look"
+            ar-scale="fixed"
+            disable-zoom
             camera-controls=""
             auto-rotate=""
             auto-rotate-delay="500"
             rotation-per-second="20deg"
-            shadow-intensity="1"
-            exposure="1"
+            
+            /* 사용자가 조절할 필요 없도록, 호불호 없는 가장 깔끔한 그래픽 표준값으로 자동 고정 */
+            shadow-intensity="1.2"
+            exposure="1.0"
             environment-image="neutral"
+            
             style={{ width: '100%', height: '100%', background: 'transparent' } as React.CSSProperties}
           />
           {!loaded && (
@@ -228,8 +287,6 @@ export default function ModelPreviewPage() {
           onClick={() => {
             if (mvRef.current && typeof mvRef.current.activateAR === 'function') {
               setIsPreparingAR(true)
-              // 💡 [치료] 클릭하자마자 true로 강제 고정하던 버그 코드를 제거했습니다.
-              // 이제 진짜 카메라 화면에 안착했음이 감지되었을 때만 체킹 플래그가 가동됩니다.
               try {
                 mvRef.current.activateAR()
                 
