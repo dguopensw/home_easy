@@ -165,7 +165,7 @@ export default function LoadingPage() {
         <div className="w-full">
           <div className="flex justify-between items-center mb-[8px]">
             <span className="text-[13px] font-semibold" style={{ color: 'rgba(255,255,255,0.7)' }}>
-              {currentStepData?.icon}&nbsp;{currentStepData?.label}
+              &nbsp;{currentStepData?.label}
             </span>
             <span className="text-[14px] font-bold text-accent">{progress}%</span>
           </div>
