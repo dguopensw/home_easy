@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { rescaleGlbToBlobUrl } from './lib/rescaleGlb'
 
 interface Dimensions {
   width: number
@@ -15,10 +16,42 @@ export default function ModelPreviewPage() {
 
   const [tab, setTab] = useState<'3d' | '치수'>('3d')
   const [loaded, setLoaded] = useState(false)
-  const [isPreparingAR, setIsPreparingAR] = useState(false) 
-  
+  const [isPreparingAR, setIsPreparingAR] = useState(false)
+  // 실측 스케일로 리패킹한 GLB blob URL (model-viewer src로 사용)
+  const [scaledGlbUrl, setScaledGlbUrl] = useState<string | null>(null)
+
   const mvRef = useRef<any>(null)
   const wasInAr = useRef(false) // 실제 AR 카메라 내부로 진입 성공했는지 여부
+
+  // GLB를 실측 W/H/D 기준으로 uniform 스케일업 후 blob으로 리패킹.
+  // 이렇게 해야 model-viewer의 Scene Viewer / Quick Look AR이 실제 크기로 배치됨.
+  useEffect(() => {
+    if (!glbUrl) return
+    let revoked = false
+    let createdUrl: string | null = null
+
+    setScaledGlbUrl(null)
+    setLoaded(false)
+    rescaleGlbToBlobUrl(glbUrl, dimensions)
+      .then((url) => {
+        if (revoked) {
+          URL.revokeObjectURL(url)
+          return
+        }
+        createdUrl = url
+        setScaledGlbUrl(url)
+      })
+      .catch((err) => {
+        // 리스케일 실패 시 원본 URL로 폴백 (크기는 GLB 고유 크기)
+        console.error('GLB 리스케일 실패, 원본으로 폴백:', err)
+        if (!revoked) setScaledGlbUrl(glbUrl)
+      })
+
+    return () => {
+      revoked = true
+      if (createdUrl) URL.revokeObjectURL(createdUrl)
+    }
+  }, [glbUrl, dimensions.width, dimensions.height, dimensions.depth])
 
   // 1. model-viewer 스크립트 동적 로드
   useEffect(() => {
@@ -171,7 +204,7 @@ export default function ModelPreviewPage() {
         <div className="mx-[20px] rounded-[24px] overflow-hidden relative" style={{ background: 'var(--color-surface-2)', height: 320 }}>
           <model-viewer
             ref={mvRef}
-            src={glbUrl}
+            src={scaledGlbUrl ?? undefined}
             alt="3D 가구 모델"
             ar
             ar-modes="webxr scene-viewer quick-look"
