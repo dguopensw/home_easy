@@ -8,11 +8,26 @@ interface Dimensions {
   depth: number
 }
 
+// 백엔드 furniture_guess.type(영문) → 표시용 한글 라벨
+const FURNITURE_TYPE_LABEL: Record<string, string> = {
+  chair: '의자',
+  desk: '책상',
+  table: '테이블',
+  sofa: '소파',
+  cabinet: '수납장',
+  shelf: '선반',
+  bed: '침대',
+  dresser: '화장대',
+  unknown: '가구',
+}
+
 export default function ModelPreviewPage() {
   const navigate = useNavigate()
   const { state } = useLocation()
   const glbUrl: string = state?.glbUrl ?? 'https://opensw-3dmodel-budget-918183255815-ap-northeast-2-an.s3.ap-northeast-2.amazonaws.com/models/23623df5.glb'
   const dimensions: Dimensions = state?.dimensions ?? { width: 120, height: 85, depth: 60 }
+  const furnitureType: string | undefined = state?.furnitureType
+  const furnitureLabel = FURNITURE_TYPE_LABEL[furnitureType ?? 'unknown'] ?? furnitureType ?? '가구'
 
   const [tab, setTab] = useState<'3d' | '치수'>('3d')
   const [loaded, setLoaded] = useState(false)
@@ -234,7 +249,7 @@ export default function ModelPreviewPage() {
         <div className="mx-[20px] mt-[16px] bg-surface rounded-[20px] p-[16px] border border-border flex-shrink-0">
           <div className="flex justify-between items-start mb-[14px]">
             <div>
-              <p className="text-[17px] font-extrabold text-text-primary mb-[4px]">소파 (원목 2인)</p>
+              <p className="text-[17px] font-extrabold text-text-primary mb-[4px]">{furnitureLabel}</p>
               <p className="text-[12px] text-text-secondary">당근마켓 게시글 · 3D 생성 완료</p>
             </div>
             <div className="px-[10px] py-[4px] rounded-[20px] text-[11px] font-bold text-accent border flex-shrink-0" style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 33%, transparent)' }}>

@@ -82,11 +82,12 @@ export default function CrawlingResultPage() {
   const handleProcess = async () => {
     if (!scrapeData || submitting) return
     setSubmitting(true)
+    const furnitureType = scrapeData.furniture_guess?.type
     try {
       const { job_id } = await startProcess(scrapeData.scrape_id, selectedIndex)
-      navigate('/loading', { state: { jobId: job_id, sourceUrl } })
+      navigate('/loading', { state: { jobId: job_id, sourceUrl, furnitureType } })
     } catch {
-      navigate('/loading', { state: { jobId: 'mock_job_001', sourceUrl } })
+      navigate('/loading', { state: { jobId: 'mock_job_001', sourceUrl, furnitureType } })
     }
   }
 
