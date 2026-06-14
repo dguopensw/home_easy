@@ -9,6 +9,7 @@ python-dotenv
 sse-starlette
 httpx
 pydantic-settings
+python-multipart
 
 # AI / OpenAI
 openai

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import os
@@ -10,7 +12,7 @@ from pydantic import BaseModel
 import requests
 from sse_starlette.sse import EventSourceResponse
 
-from core import OUTPUT_DIR
+from core import OUTPUT_DIR, _core
 from services.pipeline_service import PipelineService
 from services.progress_manager import progress_manager
 from services.scrape_store import scrape_store
@@ -132,7 +134,7 @@ def _run_process_job(
 
     try:
         result, status_code = _pipeline.run_pipeline(
-            body.url.strip(),
+            _core.extract_listing_url(body.url),
             body.selected_image_index,
             backend_public_url=backend_public_url,
             job_id=job_id,
@@ -186,7 +188,7 @@ def _run_process_job(
 @router.post("/process")
 def api_process(body: ProcessRequest, request: Request):
     """전체 파이프라인 실행: 스크래핑 → 마스킹 → 치수 추정."""
-    url = body.url.strip()
+    url = _core.extract_listing_url(body.url)
     if not url:
         raise HTTPException(status_code=400, detail="URL을 입력해주세요.")
 
@@ -211,7 +213,7 @@ def start_process(
     if scrape_id and scraped_data is None:
         raise HTTPException(status_code=404, detail="Scrape result not found or expired")
 
-    url = body.url.strip() or (scraped_data or {}).get("url", "")
+    url = _core.extract_listing_url(body.url or (scraped_data or {}).get("url", ""))
     if not url:
         raise HTTPException(status_code=400, detail="URL을 입력해주세요.")
 
@@ -263,6 +265,7 @@ async def process_status(job_id: str, request: Request):
 @router.post("/gen/start")
 async def start_generation(url: str):
     """(레거시 호환) 파이프라인 시작 — /api/process 사용을 권장합니다."""
+    url = _core.extract_listing_url(url)
     if not url:
         raise HTTPException(status_code=400, detail="URL을 입력해주세요.")
     result, status_code = _pipeline.run_pipeline(url, 0)

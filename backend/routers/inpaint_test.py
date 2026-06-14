@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import uuid
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
@@ -110,7 +111,7 @@ def _run_sam3_check(
 async def run_inpaint_test(
     method: str = Form(...),
     image: UploadFile = File(...),
-    mask: UploadFile | None = File(None),
+    mask: Optional[UploadFile] = File(None),
     furniture_type: str = Form(""),
     composite_blur: float = Form(1.5),
     composite_mode: str = Form("blur"),
