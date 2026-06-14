@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 const HOW_TO = [
   { icon: '🔗', title: '링크 붙여넣기',   desc: '당근·번개장터 게시글 URL만 입력하세요' },
   { icon: '✨', title: 'AI 3D 모델 생성', desc: 'AI가 자동으로 3D 모델을 만들어드려요' },
-  { icon: '🛋️', title: '내 방에 AR 배치', desc: '실제 공간에 가구를 가상으로 배치해요' },
+  { icon: '🛋️', title: '내 방에 AR로 배치', desc: '실제 공간에 가구를 가상으로 배치해요' },
 ]
 
 const RECENT_ITEMS = [

@@ -54,7 +54,7 @@ export default function CrawlingResultPage() {
         clearInterval(fakeProgress)
         const mock: ScrapeResponse = {
           scrape_id: 'mock_scrape_001',
-          title: '[목 데이터] 원목 2인 소파',
+          title: '소파',
           description: '상태 좋은 원목 소파입니다. 직접 수령 부탁드립니다.',
           price: '150,000원',
           platform: 'daangn',
@@ -82,11 +82,12 @@ export default function CrawlingResultPage() {
   const handleProcess = async () => {
     if (!scrapeData || submitting) return
     setSubmitting(true)
+    const furnitureType = scrapeData.furniture_guess?.type
     try {
       const { job_id } = await startProcess(scrapeData.scrape_id, selectedIndex)
-      navigate('/loading', { state: { jobId: job_id, sourceUrl } })
+      navigate('/loading', { state: { jobId: job_id, sourceUrl, furnitureType } })
     } catch {
-      navigate('/loading', { state: { jobId: 'mock_job_001', sourceUrl } })
+      navigate('/loading', { state: { jobId: 'mock_job_001', sourceUrl, furnitureType } })
     }
   }
 
