@@ -38,6 +38,7 @@ export default function LoadingPage() {
   const { state } = useLocation()
   const jobId: string = state?.jobId ?? ''
   const sourceUrl: string = state?.sourceUrl ?? ''
+  const furnitureType: string | undefined = state?.furnitureType
 
   const [currentStep, setCurrentStep] = useState<PipelineStep>('crawling')
   const [progress, setProgress] = useState(5)
@@ -82,6 +83,7 @@ export default function LoadingPage() {
                 }
               : { width: 0, height: 0, depth: 0 },
             sourceUrl,
+            furnitureType,
           },
         })
       }
@@ -102,7 +104,7 @@ export default function LoadingPage() {
     }
 
     return () => events.close()
-  }, [jobId, navigate, sourceUrl])
+  }, [jobId, navigate, sourceUrl, furnitureType])
 
   return (
     <div className="min-h-screen bg-[#1A130C] flex flex-col items-center justify-center px-[28px] relative overflow-hidden">

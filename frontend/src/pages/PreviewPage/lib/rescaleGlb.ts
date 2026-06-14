@@ -58,6 +58,12 @@ export async function rescaleGlbToBlobUrl(
  * dimensions, assuming proportions are already correct. The single scale
  * factor is the average of the per-axis ratios, which cancels small
  * proportion noise instead of stretching the model. Bottom is aligned to y=0.
+ *
+ * The scale is BAKED into the geometry vertices (not left on node transforms),
+ * so the exported GLB carries its real-world size in the vertex coordinates
+ * themselves. This is required for iOS Quick Look, which can ignore root-node
+ * transform scale during its GLB→USDZ conversion and would otherwise show the
+ * furniture at its original (tiny) size.
  */
 function applyUniformScale(object: THREE.Object3D, dims: DimensionsCm): void {
   object.scale.set(1, 1, 1)
@@ -79,10 +85,29 @@ function applyUniformScale(object: THREE.Object3D, dims: DimensionsCm): void {
   const factor =
     (targetM.w / size.x + targetM.h / size.y + targetM.d / size.z) / 3
 
+  // Apply the scale on the root, then bake every node's world transform into
+  // its geometry so the vertices end up at true real-world coordinates.
   object.scale.setScalar(factor)
+  object.updateMatrixWorld(true)
+
+  object.traverse((child) => {
+    if (child instanceof THREE.Mesh && child.geometry) {
+      child.geometry.applyMatrix4(child.matrixWorld)
+    }
+  })
+
+  // Reset all node transforms to identity now that the scale (and any nested
+  // offsets) live in the vertices. The GLB then exports with no transform
+  // scale, so Quick Look / Scene Viewer render it at true size unconditionally.
+  object.traverse((child) => {
+    child.position.set(0, 0, 0)
+    child.quaternion.identity()
+    child.scale.set(1, 1, 1)
+  })
+  object.updateMatrixWorld(true)
 
   // Align bottom to y=0 so it sits on the AR floor plane
-  object.updateMatrixWorld(true)
   const boxAfter = new THREE.Box3().setFromObject(object)
   object.position.y -= boxAfter.min.y
+  object.updateMatrixWorld(true)
 }
