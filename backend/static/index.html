@@ -654,6 +654,14 @@
   const show = id => $(id).classList.remove('hidden');
   const hide = id => $(id).classList.add('hidden');
 
+  function extractListingUrl(raw) {
+    const text = (raw || '').trim();
+    const matches = text.match(/https?:\/\/[^\s<>"']+/gi) || [];
+    const clean = value => (value || '').trim().replace(/[.,!?;:\)\]\}…]+$/g, '');
+    const supported = matches.map(clean).find(value => /daangn\.com|joongna\.com/i.test(value));
+    return supported || (matches[0] ? clean(matches[0]) : clean(text));
+  }
+
   // ── Scrape ──────────────────────────────────────────────────────────────
 
   $('scrapeBtn').addEventListener('click', doScrape);
@@ -661,8 +669,9 @@
 
   async function doScrape() {
     if (isProcessing) { alert('처리 중입니다. 잠시 기다려주세요.'); return; }
-    const url = $('urlInput').value.trim();
+    const url = extractListingUrl($('urlInput').value);
     if (!url) { alert('URL을 입력해주세요.'); return; }
+    $('urlInput').value = url;
 
     stopProcessEventSource();
     stopModelGenerationPolling();
@@ -864,8 +873,9 @@
 
   async function doProcess() {
     if (isProcessing) return;
-    const url = $('urlInput').value.trim();
+    const url = extractListingUrl($('urlInput').value);
     if (!url) return;
+    $('urlInput').value = url;
 
     isProcessing = true;
     stopProcessEventSource();

@@ -11,6 +11,7 @@ import mimetypes
 import os
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests as http_requests
 from bs4 import BeautifulSoup
@@ -93,46 +94,102 @@ def _image_data_url(image_path: Path) -> str:
 # 스크래핑
 # ---------------------------------------------------------------------------
 
-def identify_platform(url: str) -> str | None:
-    if "daangn.com" in url:
+_URL_RE = re.compile(r'https?://[^\s<>"\']+', re.IGNORECASE)
+_TRAILING_URL_CHARS = ".,!?;:)]}…"
+
+
+def _clean_extracted_url(url: str) -> str:
+    return (url or "").strip().rstrip(_TRAILING_URL_CHARS)
+
+
+def _platform_from_url(url: str) -> str | None:
+    host = urlparse(url).netloc.lower().split("@")[-1].split(":")[0]
+    if host == "daangn.com" or host.endswith(".daangn.com"):
         return "daangn"
-    if "joongna.com" in url:
+    if host == "joongna.com" or host.endswith(".joongna.com"):
         return "joongna"
     return None
 
 
+def extract_listing_url(raw: str) -> str:
+    """공유 문구 전체에서 지원 플랫폼 URL을 추출합니다."""
+    text = (raw or "").strip()
+    candidates = [_clean_extracted_url(match.group(0)) for match in _URL_RE.finditer(text)]
+    if not candidates:
+        return _clean_extracted_url(text)
+
+    for candidate in candidates:
+        if _platform_from_url(candidate):
+            return candidate
+    return candidates[0]
+
+
+def identify_platform(url: str) -> str | None:
+    return _platform_from_url(extract_listing_url(url))
+
+
+def _iter_json_ld_items(data):
+    if isinstance(data, list):
+        for item in data:
+            yield from _iter_json_ld_items(item)
+    elif isinstance(data, dict):
+        graph = data.get("@graph")
+        if isinstance(graph, list):
+            for item in graph:
+                yield from _iter_json_ld_items(item)
+        yield data
+
+
 def scrape_daangn(url: str) -> dict:
-    resp = http_requests.get(url, headers=HEADERS, timeout=15)
+    url = extract_listing_url(url)
+    resp = http_requests.get(url, headers=HEADERS, timeout=15, allow_redirects=True)
     resp.raise_for_status()
     resp.encoding = "utf-8"
     soup = BeautifulSoup(resp.text, "html.parser")
 
-    result = {"title": "", "description": "", "price": "", "images": []}
+    result = {"url": resp.url, "title": "", "description": "", "price": "", "images": []}
+    seen = set()
+
+    def add_image(src: str | None) -> None:
+        if not src:
+            return
+        src = src.strip()
+        if src and src not in seen:
+            seen.add(src)
+            result["images"].append(src)
 
     for script in soup.find_all("script", type="application/ld+json"):
         try:
             data = json.loads(script.string)
         except (json.JSONDecodeError, TypeError):
             continue
-        if data.get("@type") == "Product":
+        for data in _iter_json_ld_items(data):
+            if data.get("@type") != "Product":
+                continue
             result["title"] = data.get("name", "")
             result["description"] = data.get("description", "")
+            image = data.get("image")
+            if isinstance(image, list):
+                for src in image:
+                    add_image(src)
+            else:
+                add_image(image)
             offers = data.get("offers", {})
+            if isinstance(offers, list) and offers:
+                offers = offers[0]
             price = offers.get("price", "")
             if price:
                 result["price"] = f"{int(float(price)):,}원"
 
-    seen = set()
-    for img in soup.find_all("img"):
-        src = img.get("src", "")
-        if "karroter" in src and "1440x1440" in src and src not in seen:
-            seen.add(src)
-            result["images"].append(src)
+    og_img = soup.find("meta", property="og:image")
+    if og_img and og_img.get("content"):
+        add_image(og_img["content"])
 
     if not result["images"]:
-        og_img = soup.find("meta", property="og:image")
-        if og_img and og_img.get("content"):
-            result["images"].append(og_img["content"])
+        for img in soup.find_all("img"):
+            src = img.get("src", "") or img.get("data-src", "")
+            if "karroter" in src:
+                add_image(src)
 
     if not result["title"]:
         og_title = soup.find("meta", property="og:title")

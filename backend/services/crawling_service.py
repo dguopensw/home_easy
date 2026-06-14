@@ -18,11 +18,13 @@ class CrawlingService:
 
     def scrape_listing(self, url: str) -> dict:
         """당근마켓 또는 중고나라 상품 페이지를 스크래핑합니다."""
-        platform = _core.identify_platform(url)
+        normalized_url = _core.extract_listing_url(url)
+        platform = _core.identify_platform(normalized_url)
         if not platform:
             raise ValueError("당근마켓 또는 중고나라 URL만 지원합니다.")
         scrapers = {"daangn": _core.scrape_daangn, "joongna": _core.scrape_joongna}
-        data = scrapers[platform](url)
+        data = scrapers[platform](normalized_url)
+        data.setdefault("url", normalized_url)
         data["platform"] = platform
         return data
 

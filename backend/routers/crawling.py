@@ -19,7 +19,7 @@ class ScrapeRequest(BaseModel):
 @router.post("/scrape")
 def api_scrape(body: ScrapeRequest):
     """URL 스크래핑 및 이미지 순위 추천."""
-    url = body.url.strip()
+    url = _core.extract_listing_url(body.url)
     if not url:
         raise HTTPException(status_code=400, detail="URL을 입력해주세요.")
 
@@ -35,13 +35,14 @@ def api_scrape(body: ScrapeRequest):
     image_urls = scraped.get("images", [])
     title = scraped.get("title", "")
     description = scraped.get("description", "")
+    source_url = scraped.get("url") or url
 
     image_ranking = _image_selector.choose_best_image(title, description, image_urls)
     listing_dims = _crawling.parse_listing_dimensions(title, description)
     listing_class = _core.classify_furniture_from_listing(title, description)
 
     store_data = {
-        "url": url,
+        "url": source_url,
         "title": title,
         "description": description,
         "price": scraped.get("price", ""),
@@ -65,6 +66,7 @@ def api_scrape(body: ScrapeRequest):
         "description": description,
         "price": scraped.get("price", ""),
         "platform": scraped.get("platform", ""),
+        "url": source_url,
         "image_urls": image_urls,
         "ai_recommended_image_index": image_ranking["recommended_index"],
         "ranked_candidate_indices": image_ranking["ranked_candidate_indices"],
